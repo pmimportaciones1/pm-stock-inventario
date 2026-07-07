@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PM Stock - Inventario</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Lexend', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #fff; -webkit-font-smoothing: antialiased; letter-spacing: 0.1px; }
+
+  .header { background: #1a1a2e; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; border-bottom: 2px solid #e94560; }
+  .header h1 { font-size: 18px; font-weight: 700; color: #e94560; }
+  .header .week { font-size: 12px; color: #aaa; }
+
+  .tabs { display: flex; overflow-x: auto; background: #111; border-bottom: 1px solid #333; position: sticky; top: 57px; z-index: 99; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex-shrink: 0; padding: 12px 20px; cursor: pointer; font-size: 13px; font-weight: 600; color: #777; border-bottom: 3px solid transparent; transition: all 0.2s; white-space: nowrap; }
+  .tab.active { color: #e94560; border-bottom-color: #e94560; }
+  .tab:hover { color: #fff; }
+
+  .panel { display: none; padding: 12px; }
+  .panel.active { display: block; }
+
+  .search-bar { position: sticky; top: 103px; z-index: 98; margin-bottom: 10px; }
+  .search-bar input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: #fff; font-size: 14px; }
+  .search-bar input::placeholder { color: #555; }
+  .search-bar input:focus { outline: none; border-color: #e94560; }
+
+  .employee-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 12px; background: #1a1a2e; border-radius: 10px; border-left: 4px solid; }
+  .employee-header .avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
+  .employee-header .info h2 { font-size: 16px; font-weight: 700; }
+  .employee-header .info p { font-size: 12px; color: #aaa; margin-top: 2px; }
+  .employee-header .total-badge { margin-left: auto; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+
+  .felipe-color { border-color: #3b82f6; }
+  .felipe-avatar { background: #1d4ed8; color: #fff; }
+  .juan-color { border-color: #10b981; }
+  .juan-avatar { background: #059669; color: #fff; }
+  .fede-color { border-color: #f59e0b; }
+  .fede-avatar { background: #d97706; color: #fff; }
+  .azul-color { border-color: #8b5cf6; }
+  .azul-avatar { background: #7c3aed; color: #fff; }
+
+  .product-list { display: flex; flex-direction: column; gap: 4px; }
+  .product-row { display: flex; align-items: center; background: #1a1a1a; border-radius: 8px; padding: 8px 12px; gap: 10px; border: 1px solid #222; transition: border-color 0.2s; }
+  .product-row.has-value { border-color: #333; background: #1e1e2e; }
+  .product-name { flex: 1; font-size: 13px; color: #ddd; line-height: 1.3; }
+  .product-input { width: 72px; padding: 6px 8px; border-radius: 6px; border: 1px solid #333; background: #111; color: #fff; font-size: 15px; font-weight: 600; text-align: center; -moz-appearance: textfield; flex-shrink: 0; }
+  .product-input::-webkit-outer-spin-button, .product-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .product-input:focus { outline: none; border-color: #e94560; background: #1a1a1a; }
+  .product-input.filled { border-color: #10b981; background: #0d1f1a; color: #10b981; }
+
+  .save-btn { position: fixed; bottom: 20px; right: 20px; background: #e94560; color: #fff; border: none; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(233,69,96,0.5); z-index: 200; transition: transform 0.1s; }
+  .save-btn:active { transform: scale(0.96); }
+
+  .close-btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 14px; transition: all 0.2s; }
+  .close-btn.open { background: #1a1a2e; border: 2px solid #e94560; color: #e94560; }
+  .close-btn.closed { background: #1a3a1a; border: 2px solid #10b981; color: #10b981; cursor: default; }
+
+  .copy-section { background: #1a2e1a; border: 2px solid #10b981; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .copy-section h3 { color: #10b981; font-size: 15px; margin-bottom: 6px; }
+  .copy-section p { color: #aaa; font-size: 12px; margin-bottom: 12px; }
+  .copy-btn { width: 100%; padding: 14px; background: #10b981; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; transition: transform 0.1s; }
+  .copy-btn:active { transform: scale(0.98); }
+
+  .closed-badge { display: inline-block; background: #10b981; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+  .locked-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); border-radius: 8px; z-index: 10; pointer-events: all; }
+  .product-row { position: relative; }
+
+  /* STOCK ACTUAL */
+  .stock-header { background: #1a1a2e; border-radius: 10px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #e94560; }
+  .stock-header h2 { font-size: 16px; font-weight: 700; color: #e94560; }
+  .stock-header p { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+  .load-btn { width: 100%; padding: 16px; background: linear-gradient(135deg, #e94560, #c0392b); color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-bottom: 14px; letter-spacing: 0.5px; box-shadow: 0 4px 15px rgba(233,69,96,0.4); transition: transform 0.1s; }
+  .load-btn:active { transform: scale(0.98); }
+
+  .stock-table { border-radius: 10px; overflow: hidden; border: 1px solid #222; }
+  .stock-table-header { display: grid; grid-template-columns: 1fr 80px 80px 80px; background: #111; padding: 8px 12px; font-size: 11px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.5px; gap: 6px; }
+  .stock-row { display: grid; grid-template-columns: 1fr 80px 80px 80px; padding: 8px 12px; font-size: 12px; gap: 6px; align-items: center; border-top: 1px solid #1a1a1a; }
+  .stock-row:nth-child(even) { background: #111; }
+  .stock-row .pname { color: #ccc; line-height: 1.3; }
+  .stock-row .val { text-align: center; font-weight: 600; }
+  .stock-row .diff.pos { color: #10b981; }
+  .stock-row .diff.neg { color: #e94560; }
+  .stock-row .diff.zero { color: #555; }
+  .stock-row.changed { background: #1a1a1e; }
+
+  .summary-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .card { background: #1a1a1a; border-radius: 10px; padding: 12px; border: 1px solid #222; }
+  .card .clabel { font-size: 11px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .card .cval { font-size: 22px; font-weight: 700; }
+  .card.felipe .cval { color: #3b82f6; }
+  .card.juan .cval { color: #10b981; }
+  .card.fede .cval { color: #f59e0b; }
+  .card.azul .cval { color: #8b5cf6; }
+
+  .filter-bar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .filter-chip { padding: 5px 12px; border-radius: 20px; border: 1px solid #333; background: #111; color: #777; font-size: 12px; cursor: pointer; transition: all 0.2s; }
+  .filter-chip.active { background: #e94560; border-color: #e94560; color: #fff; }
+
+  .toast { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); background: #10b981; color: #fff; padding: 12px 24px; border-radius: 50px; font-weight: 600; font-size: 14px; z-index: 300; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+
+  .no-results { text-align: center; padding: 30px; color: #555; font-size: 14px; }
+
+  .progress-bar { height: 3px; background: #222; border-radius: 2px; margin-bottom: 12px; }
+  .progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+  @media (max-width: 400px) {
+    .stock-table-header, .stock-row { grid-template-columns: 1fr 65px 65px 65px; font-size: 11px; padding: 7px 8px; }
+  }
+
+  /* ===== REFRESH VISUAL MODERNO ===== */
+  button { cursor: pointer; transition: transform .12s ease, filter .15s ease; }
+  button:active { transform: scale(0.97); filter: brightness(0.95); }
+  .header { background: linear-gradient(135deg, #1e1e38 0%, #0f0f1e 100%); box-shadow: 0 2px 16px rgba(0,0,0,0.35); }
+  .employee-header, .stock-header, .copy-section { border-radius: 14px; }
+  .card { border-radius: 14px; }
+  .product-row { border-radius: 10px; }
+  .stock-table { border-radius: 12px; }
+  .close-btn, .copy-btn, .load-btn { border-radius: 12px; }
+  .filter-chip { border-radius: 999px; }
+  .employee-header .total-badge { border-radius: 999px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📦 PM Stock</h1>
+  <span class="week">Semana 29/06 → 06/07</span>
+</div>
+
+<div class="tabs">
+  <div class="tab" onclick="showTab('base')">⚙️ STOCK BASE</div>
+  <div class="tab active" onclick="showTab('felipe')">👨 FELIPE</div>
+  <div class="tab" onclick="showTab('juan')">👨 JUAN</div>
+  <div class="tab" onclick="showTab('fede')">👨 FEDE</div>
+  <div class="tab" onclick="showTab('azul')">👩 AZUL</div>
+  <div class="tab" onclick="showTab('nahuel')">👨 NAHUEL</div>
+  <div class="tab" onclick="showTab('stock')">📊 STOCK ACTUAL</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- STOCK BASE -->
+<div class="panel" id="panel-base">
+  <div style="background:#1a1a2e;border-radius:10px;padding:14px;margin-bottom:12px;border-left:4px solid #f59e0b;">
+    <h2 style="color:#f59e0b;font-size:16px;font-weight:700;">⚙️ Stock Base de la Semana</h2>
+    <p style="font-size:12px;color:#aaa;margin-top:4px;">Pegá solo los números de tu columna de stock, uno por línea, en el mismo orden que tu Excel</p>
+  </div>
+
+  <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:12px;">
+    <p style="font-size:13px;color:#f59e0b;font-weight:700;margin-bottom:10px;">📅 Fechas de la semana</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <div style="flex:1;min-width:120px;">
+        <label style="font-size:11px;color:#777;display:block;margin-bottom:4px;">STOCK VIEJO (ej: 29/06)</label>
+        <input id="input-week-old" type="text" placeholder="29/06" style="width:100%;padding:10px;background:#111;border:1px solid #444;border-radius:8px;color:#fff;font-size:15px;font-family:monospace;box-sizing:border-box;">
+      </div>
+      <div style="flex:1;min-width:120px;">
+        <label style="font-size:11px;color:#777;display:block;margin-bottom:4px;">NUEVO CONTEO (ej: 06/07)</label>
+        <input id="input-week-new" type="text" placeholder="06/07" style="width:100%;padding:10px;background:#111;border:1px solid #444;border-radius:8px;color:#fff;font-size:15px;font-family:monospace;box-sizing:border-box;">
+      </div>
+      <button onclick="guardarFechas()" style="padding:10px 18px;background:#f59e0b;color:#000;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:18px;">✅ GUARDAR</button>
+    </div>
+  </div>
+
+  <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:12px;">
+    <p style="font-size:13px;color:#aaa;margin-bottom:4px;">• <strong style="color:#fff">Solo números</strong> → actualiza por posición (mismo orden que tu Excel)</p>
+    <p style="font-size:13px;color:#aaa;margin-bottom:12px;">• <strong style="color:#fff">Lista completa con nombres</strong> → pegá todo, matchea por nombre y agrega productos nuevos automáticamente</p>
+    <textarea id="paste-area" placeholder="Solo números:&#10;394&#10;19&#10;11&#10;&#10;Con nombres (para agregar nuevos):&#10;ABRIDORES NASALES	394&#10;ACUARELA 12 COLORES	19&#10;PRODUCTO NUEVO	50" style="width:100%;height:220px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;padding:10px;font-size:14px;font-family:monospace;resize:vertical;line-height:1.6;"></textarea>
+    <button onclick="cargarBase()" style="width:100%;padding:14px;background:#f59e0b;color:#000;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:10px;">⬆️ CARGAR STOCK BASE</button>
+  </div>
+
+  <div style="background:#1a1a1a;border:1px solid #222;border-radius:10px;overflow:hidden;">
+    <div style="display:grid;grid-template-columns:1fr 80px;padding:8px 12px;background:#111;font-size:11px;font-weight:700;color:#777;text-transform:uppercase;letter-spacing:0.5px;">
+      <span>PRODUCTO</span><span style="text-align:center">BASE</span>
+    </div>
+    <div id="list-base" style="max-height:400px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- FELIPE -->
+<div class="panel active" id="panel-felipe">
+  <div class="search-bar"><input type="text" placeholder="🔍 Buscar producto..." oninput="filterProducts('felipe', this.value)" id="search-felipe"></div>
+  <div class="employee-header felipe-color">
+    <div class="avatar felipe-avatar">F</div>
+    <div class="info"><h2>Conteo de FELIPE</h2><p id="subtitle-felipe">Cargá las cantidades que contás</p></div>
+    <div class="total-badge" id="total-felipe">0 items</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="prog-felipe" style="background:#3b82f6;width:0%"></div></div>
+  <div class="product-list" id="list-felipe"></div>
+  <button class="close-btn open" id="closebtn-felipe" onclick="cerrarConteo('felipe')">🔒 CERRAR MI CONTEO</button>
+</div>
+
+<!-- JUAN -->
+<div class="panel" id="panel-juan">
+  <div class="search-bar"><input type="text" placeholder="🔍 Buscar producto..." oninput="filterProducts('juan', this.value)" id="search-juan"></div>
+  <div class="employee-header juan-color">
+    <div class="avatar juan-avatar">J</div>
+    <div class="info"><h2>Conteo de JUAN</h2><p id="subtitle-juan">Cargá las cantidades que contás</p></div>
+    <div class="total-badge" id="total-juan">0 items</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="prog-juan" style="background:#10b981;width:0%"></div></div>
+  <div class="product-list" id="list-juan"></div>
+  <button class="close-btn open" id="closebtn-juan" onclick="cerrarConteo('juan')">🔒 CERRAR MI CONTEO</button>
+</div>
+
+<!-- FEDE -->
+<div class="panel" id="panel-fede">
+  <div class="search-bar"><input type="text" placeholder="🔍 Buscar producto..." oninput="filterProducts('fede', this.value)" id="search-fede"></div>
+  <div class="employee-header fede-color">
+    <div class="avatar fede-avatar">F</div>
+    <div class="info"><h2>Conteo de FEDE</h2><p id="subtitle-fede">Cargá las cantidades que contás</p></div>
+    <div class="total-badge" id="total-fede">0 items</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="prog-fede" style="background:#f59e0b;width:0%"></div></div>
+  <div class="product-list" id="list-fede"></div>
+  <button class="close-btn open" id="closebtn-fede" onclick="cerrarConteo('fede')">🔒 CERRAR MI CONTEO</button>
+</div>
+
+<!-- AZUL -->
+<div class="panel" id="panel-azul">
+  <div class="search-bar"><input type="text" placeholder="🔍 Buscar producto..." oninput="filterProducts('azul', this.value)" id="search-azul"></div>
+  <div class="employee-header azul-color">
+    <div class="avatar azul-avatar">A</div>
+    <div class="info"><h2>Conteo de AZUL</h2><p id="subtitle-azul">Cargá las cantidades que contás</p></div>
+    <div class="total-badge" id="total-azul">0 items</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="prog-azul" style="background:#8b5cf6;width:0%"></div></div>
+  <div class="product-list" id="list-azul"></div>
+  <button class="close-btn open" id="closebtn-azul" onclick="cerrarConteo('azul')">🔒 CERRAR MI CONTEO</button>
+</div>
+
+<!-- NAHUEL -->
+<div class="panel" id="panel-nahuel">
+  <div class="search-bar"><input type="text" placeholder="🔍 Buscar producto..." oninput="filterProducts('nahuel', this.value)" id="search-nahuel"></div>
+  <div class="employee-header" style="border-color:#f43f5e">
+    <div class="avatar" style="background:#be123c;color:#fff">N</div>
+    <div class="info"><h2>Conteo de NAHUEL</h2><p id="subtitle-nahuel">Cargá las cantidades que contás</p></div>
+    <div class="total-badge" id="total-nahuel">0 items</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="prog-nahuel" style="background:#f43f5e;width:0%"></div></div>
+  <div class="product-list" id="list-nahuel"></div>
+  <button class="close-btn open" id="closebtn-nahuel" onclick="cerrarConteo('nahuel')">🔒 CERRAR MI CONTEO</button>
+</div>
+
+<!-- PASSWORD STOCK -->
+<div class="panel" id="panel-stock-lock" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;">
+  <div style="font-size:48px;">🔒</div>
+  <h2 style="color:#fff;font-size:20px;font-weight:700;">STOCK ACTUAL</h2>
+  <p style="color:#777;font-size:14px;">Ingresá la contraseña para continuar</p>
+  <input id="stock-password-input" type="password" placeholder="Contraseña" onkeydown="if(event.key==='Enter')verificarPassword()" style="padding:12px 18px;background:#111;border:1px solid #444;border-radius:10px;color:#fff;font-size:16px;width:220px;text-align:center;letter-spacing:2px;">
+  <button onclick="verificarPassword()" style="padding:12px 24px;background:#e94560;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;width:220px;">ENTRAR</button>
+  <p id="stock-password-error" style="color:#e94560;font-size:13px;display:none;">Contraseña incorrecta</p>
+</div>
+
+<!-- STOCK ACTUAL -->
+<div class="panel" id="panel-stock">
+  <div class="stock-header">
+    <h2>📊 Stock Actual</h2>
+    <p id="week-label">Cargando semana...</p>
+  </div>
+
+  <div class="summary-cards">
+    <div class="card felipe"><div class="clabel">FELIPE</div><div class="cval" id="card-felipe">0</div></div>
+    <div class="card juan"><div class="clabel">JUAN</div><div class="cval" id="card-juan">0</div></div>
+    <div class="card fede"><div class="clabel">FEDE</div><div class="cval" id="card-fede">0</div></div>
+    <div class="card azul"><div class="clabel">AZUL</div><div class="cval" id="card-azul">0</div></div>
+    <div class="card" style="border:1px solid #222"><div class="clabel">NAHUEL</div><div class="cval" id="card-nahuel" style="color:#f43f5e">0</div></div>
+  </div>
+
+  <button onclick="copiarParaExcel()" style="width:100%;padding:14px;background:#1d4ed8;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">📊 COPIAR NÚMEROS SEMANA NUEVA (para Excel)</button>
+
+  <div id="copy-section" style="display:none" class="copy-section">
+    <h3>✅ Todos los conteos cerrados</h3>
+    <p>El inventario está listo. Copiá la lista completa con nombres:</p>
+    <button class="copy-btn" onclick="copiarInventario()">📋 COPIAR COMPLETO (con nombres)</button>
+  </div>
+
+  <div id="pending-section" style="display:none;background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:12px;margin-bottom:14px;">
+    <p style="font-size:13px;color:#aaa;margin-bottom:8px;">⏳ Conteos pendientes de cerrar:</p>
+    <div id="pending-list" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+  </div>
+
+  <button class="load-btn" onclick="cargarInventario()">🔄 CARGAR INVENTARIO</button>
+
+  <div id="nueva-semana-section" style="display:none;margin-bottom:14px;">
+    <button onclick="nuevaSemana()" style="width:100%;padding:14px;background:#0f2a0f;border:2px solid #10b981;color:#10b981;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
+      🗓️ CERRAR SEMANA Y COMENZAR NUEVA
+    </button>
+    <p style="font-size:11px;color:#555;text-align:center;margin-top:6px;">El stock contado pasa a ser el stock base de la próxima semana</p>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-chip active" onclick="filterStock('all', this)">Todos</div>
+    <div class="filter-chip" onclick="filterStock('diff', this)">Con diferencia</div>
+    <div class="filter-chip" onclick="filterStock('neg', this)">Faltantes ↓</div>
+    <div class="filter-chip" onclick="filterStock('pos', this)">Sobrantes ↑</div>
+  </div>
+
+  <div class="search-bar" style="position:static;margin-bottom:10px;">
+    <input type="text" placeholder="🔍 Buscar producto..." oninput="filterStockSearch(this.value)" id="search-stock">
+  </div>
+
+  <div class="stock-table">
+    <div class="stock-table-header">
+      <span>PRODUCTO</span>
+      <span style="text-align:center" id="col-old">29/06</span>
+      <span style="text-align:center" id="col-new">06/07</span>
+      <span style="text-align:center">DIF</span>
+    </div>
+    <div id="stock-list"></div>
+  </div>
+</div>
+
+<button class="save-btn" id="save-btn" onclick="saveProgress()" style="display:none">💾 Guardar</button>
+
+<script>
+const PRODUCTS = [
+  ["ABRIDORES NASALES",394],["ACUARELA 12 COLORES (WB-5009-12)",19],["ACUARELA 28 COLORES (WB-5009-28)",11],
+  ["AIR FRYER EMBASSY FF-1012 5,5 LITROS",3],["AIR FRYER EMBASSY GN45-A 2.8 LITROS",9],["AIR FRYER POWER XL",0],
+  ["AIRE ENOVA",0],["AJEDREZ VIDRIO (20X20)",16],["AJEDREZ VIDRIO (25X25)",2],["AJEDREZ VIDRIO (35X35)",4],
+  ["ALAXE MINI",68],["ALAXE PRO MAX",2],["ALEXA PRO MAX (SIN CAJA)",5],["ALAXE MINI (SIN CAJA)",2],
+  ["ALFOMBRA",35],["ANAFE UNA HORNALLA",2],["ANTIFAZ PARA DORMIR CON TAPONES",0],["ANTIFAZ PARA DORMIR DOBLE CARA",0],
+  ["ARMAS HIDROGEL",41],["AROMATERAOPIA UFO RAINDROP",17],["ASP CECOTEC ROCK STAR 1500 RAY ERGOWET",0],
+  ["ASPIRADORA 861 SMART CLEAR",8],["ASPIRADORA BARREFONDO (CARA)",0],["ASPIRADORA BARREFONDO E1",1],
+  ["ASPIRADORA PORTATIL LAMBO TECH 3 EN 1",3],["ASPIRADORA PORTATIL VACUUM 3 EN 1",31],
+  ["ASPIRADORA ROBOT JESSICA",52],["ASPIRADORA VACUUM GRANDE",16],["ASTROLABIO",12],
+  ["Auri ng-915BT",38],["Auri ng-920BT",11],["Auri Ng-a900BT",9],["Auri ng-a910BT",6],
+  ["Auri Stormer Hydra",0],["AURICULAR JBL 510 (VINCHA)",7],["AURICULARES  JBL 760-",0],
+  ["AURICULARES  M10",1],["AURICULARES  P9",0],["AURICULARES  TWS",105],["AURICULARES A6S",68],
+  ["AURICULARES AIRPODS MAX",13],["AURICULARES AIRPODS MAX KITY",26],["AURICULARES AIRPODS PRO. -",43],
+  ["AURICULARES E6S",0],["AURICULARES EARPODS -",0],["AURICULARES I7 MINI",198],
+  ["AURICULARES INPOSD 12-",6],["AURICULARES M90-",0],["AURICULARES NGV-400",36],
+  ["AURICULARES NOGA BT-WINS49",21],["AURICULARES P47",0],["AURICULARES REDMI NUEVOS",0],
+  ["AUTO A BATERIA",1],["BAFLE MONSTER",0],["BALANZA",0],["BARRA DE CORTINA",26],
+  ["BATTERY PACK",36],["BEER PINTS 500ML",3],["BICI",2],["BODY SPLASH ARABE",1],
+  ["BODY SPLASH VICTORIA SECRET",0],["BOTELLA SPORT 1LT",5],["BUCLERA HQ-21 (SIMPLE)",0],
+  ["BUCLERA M-11 (TRIPLE)",65],["CABEZAL IP (ORIGINAL)",7],["CABEZALES ARG",252],
+  ["CABEZALES IPH",16],["CABEZALEZ SAMSUNG-",54],["CABLE + CARGADOR ARG-",1],
+  ["CABLE USB A LIGHTING  2 METROS",46],["CABLES USB-C/LIGHTNING",0],["CABLES USB-C/TIPO C",0],
+  ["CAFETERA BLACK AR",1],["CAFETERA CAFELIZZA 790 STEEL PRO",0],["CAFETERA FREESTYLE COMPACT",2],
+  ["CAFETERA FREESTYLE LATTE",0],["CAFETERA WHITE AR",2],["CAJA DE HERRAMIENTAS 108 PCS",7],
+  ["CAJA DE HERRAMIENTAS 46 PCS",0],["CAJA DE PAPEL",28],["CALCULADORA",0],
+  ["CAMARA ESPIA A9",39],["CÁMARA FOCO",96],["CAMPERA NF (AAA)",0],["CAMPERA NF G5",19],
+  ["CARACOLES LUMINOSOS",44],["CELULAR GALAXY A24",0],["CELULAR GALAXY A51",0],
+  ["CELULAR MOTO EDGE 60PRO",0],["CELULAR MOTO G15 256GB",0],["CELULAR POCO C 75 (REPARADO)",2],
+  ["CELULAR POCO C75 (FALLADO)",0],["CELULAR POCO C75 256GB",29],["CELULAR POCO C85",72],
+  ["CELULAR SAMSUNG A14",0],["CELULAR SAMSUNG A15 6 GB",-2],["CELULAR SAMSUNG A16",0],
+  ["CELULAR SAMSUNG S25 ULTRA",1],["CELULAR TCL 505 128",0],["CELULAR TCL NXPAPER 256GB",31],
+  ["CELULAR TCL SE (REPARADOS)",0],["CELULAR XIAOMI 14C 128GB (FALLADO)",0],
+  ["CELULAR XIAOMI 14C 128GB (REPARADOS)",0],["CELULAR XIAOMI 14C 256GB (FALLADO)",5],
+  ["CELULAR XIAOMI 14C 256GB (REPARADOS)",5],["CELULAR XIAOMI 15 256GB (REPARADOS)",0],
+  ["CELULAR SAMSUNG A15 4 GB",0],["CELULAR XIAOMI 15C 256GB(FALLADO)",0],
+  ["CELULAR XIAOMI REDMI 14 C 128 GB 4 RAM",2],["CELULAR XIAOMI REDMI 13C 256 GB 4 RAM",1],
+  ["CELULAR XIAOMI REDMI 14C 256GB 16 RAM",1],["CELULAR XIAOMI REDMI 15C 128GB",12],
+  ["CELULAR XIOMI REDMI 15 C 256GB  16 RAM",200],["CEPILLO ALISADOR SECADOR",0],
+  ["CEPILLO CANINO A VAPOR",18],["CEPILLO CANINO COMUN",1],["CEPILLO DOBLE CARA",0],
+  ["CEPILLO MODELADOR 5 EN 1",35],["CEPILLO MODELADOR CACOTEC",1],["CERAMICAS DECO NVT-040",21],
+  ["CERAMICAS DECO NVT-041",25],["CERAMICAS DECO NVT-042",0],["CERAMICAS DECO NVT-043",7],
+  ["CERAMICAS DECO NVT-044",7],["CERAMICAS DECO NVT-045",7],["Combo Gaming nkb-407",1],
+  ["combo gaming nkb-411",5],["COMBO TECLADO NKB-100",4],["COMPRESOR (NUEVO)",31],
+  ["COMPRESORES DE AIRE M1",0],["CONSOLA GS5",4],["CONSOLA RETRO CLASSIC (ROJA) F3",52],
+  ["CONSOLA RETRO RS5 STATION",24],["CONTADORA CB100",0],["CONTADORA CB40",6],
+  ["COPO TERMICO",0],["CORTINA DE BANO",5],["CRAYONES 12* (L-320)",39],
+  ["CRAYONES 6* (L-321)",143],["CRAYONES 8* (L-322)",111],["CREMA VICTORIA SECRET",17],
+  ["CREMAS KARSEELL (REPLICA)",154],["CREMAS KARSEELL (ORIGINAL)",1],
+  ["DEPILADOR FEMENINO GRANDE",27],["DEPILADOR FEMINO LAPIZ",24],["DEPILADORA EPILATOR",124],
+  ["DESODORANTE ARABE",16],["DESPERTADOR CHICO",20],["DESPERTADOR MULTIFUNCION",23],
+  ["DIFUSOR CHICO",0],["DISPENSER DE AGUA",10],["DRONE",70],["ELECTRIC MIXER",58],
+  ["ESCOOTER ELECTRICO",1],["ESPECIEROS GIRATORIO",0],["ESTANTE BAJO MESADA",1],
+  ["ESTANTE BASE MADERA CON RUEDAS",0],["ESTANTE FLOTANTE DE BANO",3],
+  ["ESTANTE SECADOR/SEPARADOR ROPA SUCIA",10],["ESTUFA GIRATORIA NUVOH 3 VELAS 600/1200WTS",0],
+  ["ESTUFA FIJA NUVOH 4 VELAS 800/1600WTS",102],["EXTENDEDOR DE CANILLA",26],
+  ["FREIDORA ULTRACOM",0],["FUMIGADOR SPRAY",5],["FUNDA PASAPORTE CON ABROJO (L-623)",45],
+  ["FUNDA PASAPORTE LIBRITO (L-536)",106],["FUNDAS CREATIVE CASE",521],
+  ["FUNDAS FASHION CASE  SILICON (GENERICAS )",479],["FUNDAS FASHION CASE (SAMSUNG)",948],
+  ["FUNDAS FASHION CASE-",1023],["FUNDAS MAGNETIC TRANSPARENTES",458],
+  ["FUNDAS PROTECTION  CASE",500],["FUNDAS QUENCHER",0],["FUNDAS SILICON ANDROID",947],
+  ["FUNDAS SILICON CASE",2170],["FUNDAS STICH",82],["FUNDAS TRANSPARENTE ANDROID",1715],
+  ["FUNDAS TRANSPARENTES (SPACE)",1733],["GAME BOX",71],["GAME STICK BLANCO",30],
+  ["GAME STICK LITE",17],["GAME STICK NEGRO Y NARANJA",17],["GLASS (CARCASA)",459],
+  ["HAYAATI NEGRO (ORIGINAL)",0],["HIDROLAVADORA",13],["HORNO ELECTRICO",0],
+  ["HORNO FREIDORA CACOTEC",1],["HUMIFICADOR  GRANDE",0],["HUMIFICADOR BOMFIRE",36],
+  ["IMPRESORA CANON G1110",0],["IMPRESORA CANON G3110",0],["JBL A011",206],
+  ["JBL A011/ SIN CAJA)",0],["JBL B42 (SIN CAJA )",3],["JBL BOONSBOX3 (PARLANTE )",8],
+  ["JBL BUDS PRO 10",17],["JBL CHARCEMINI3+",89],["JBL CHARCERMINI3+ (SIN CAJA )",56],
+  ["CLEAR CASE",0],["JBL CLIP 3 (SIN CAJA)",11],["JBL CLIP 3 PRO (SIN CAJA )",0],
+  ["JBL CLIP 4",6],["JBL CLIP 4 (ORIGINAL)",25],["JBL CLIP 4 (SIN CAJA )",0],
+  ["JBL CLIP 5 (ORIGINAL)",0],["JBL CLIP 5 (SIN CAJA)",2],["JBL CLIP 5 PRO",0],
+  ["JBL CLIP 5+ (SIN CAJA )",0],["JBL CLIP3",200],["JBL CLIP5",200],
+  ["JBL CLIP5 + (PLUS)",244],["JBL ET 212",47],["JBL FLIP 6",19],
+  ["JBL FLIP 6 (ORIGINALES)",0],["JBL FLIP 6 (SIN CAJA )",6],["JBL FLIP 6 G5",6],
+  ["JBL FLIP 6 RGB",21],["JBL FLIP 6 RGB (SIN CAJA )",1],["JBL FLIP 7",29],
+  ["JBL G0 4 (ORIGINAL)-",61],["JBL GO 1 PRO",103],["JBL GO 1 PRO (SIN CAJA )",0],
+  ["JBL GO 3",44],["JBL GO 3 (SIN CAJA )",2],["JBL GO 4 LED",43],
+  ["JBL GO 4 PRO (SIN CAJA )",0],["JBL GO 4 RGB LED (SIN CAJA )",0],["JBL GO4",1],
+  ["JBL GRIP ORIGINAL",24],["JBL M18",0],["JBL M20",107],["JBL M20 (SIN CAJA)",1],
+  ["JBL P PRO 7",5],["JBL P15PRO",52],["JBL P16PRO",17],["JBL P17PRO",61],
+  ["JBL P3",0],["JBL P3 (SIN CAJA )",0],["JBL P3PRO / clip 3 pro",240],
+  ["JBL P5 (SIN CAJA )",0],["JBL PARLANTE B42",5],["HAY 70 ",15],["JBL SNEAKY",94],
+  ["JBL WIND 2 (SIN CAJA )",0],["JBL XTREME 2",1],["JOYSTICK",3],
+  ["JUEGO DE CARTA \"UNO STICH\"",8],["JUEGO DE CARTA \"UNO\"",51],
+  ["JUEGOS DE CARTAS ESPANOLAS",117],["JUEGOS DE SARTEN 15 PIEZAS",21],
+  ["KIT COCINA BALI",11],["KIT COCINA HEESEM",0],["KIT TALADRO",0],
+  ["LAMPARA MOSQUITO (GRANDE)",84],["LAMPARA ELECTRIC SHOCK",0],["LAMPARA PANDA",19],
+  ["LAMPARA ROTATIVA LED",31],["LAMPARA SOLAR  (WALL LAMP BK-888)",0],
+  ["LAMPARA SOLAR HW669-2W",9],["LAPICERA (L-365)",351],["LAPICERA (L-512) / (JH-929)",550],
+  ["LAPICERA C/GLITTER SET X36 (L-875)",8],["LAPICERA STITCH  (L-332)",266],
+  ["LAPIZ COLOR 24* (L-317)",10],["LAPIZ COLOR 6* LARGO (L-315)",79],["LASER PARA GATO",18],
+  ["LIMPIADOR DE MAQUILLAJE",26],["LINTERNA HEL-2866T-1",6],["LINTERNA SOLAR CHICA JY-819A",0],
+  ["LINTERNA USB CHARGER",0],["LOVE HONEY",66],["MAGNETIC CHARGER",5],["MALLAS RELOJ",426],
+  ["MANGUERA DE 15M",33],["MANGUERA DE 30M",0],["MANOPATIN V 300",0],
+  ["MANTA CON BOLSA SELLADA",5],["MANTA SIN BOLSA",38],["MAQUINA DE HELADO",1],
+  ["MAQUINA DE HIELO",2],["MAQUINA DE PELO",0],["MARCADOR PIZARRA (WB-105)",224],
+  ["MARCADOR PIZARRA X4 UNIDADES (WB-8008A-4)",36],["MASAJEADOR DE PIES",33],
+  ["MASSAGE GUN (PISTOLA MASAJE)",27],["MESA DE ARRIME",4],["MESA GAMER",0],
+  ["MICROFONO K9",1],["MICROFONO KMC-300",29],["MICROFONO WS-858",66],
+  ["MICROONDAS EMBASSY",4],["MINI AIRES",37],["MINI LUZ LED DE ESTRELLAS",15],
+  ["MINI MASAJEADORES",107],["MINI PRINTER PORTABLE",0],["MINIPIMER (BATIDORA MANO)",27],
+  ["MINIPIMER WINCO",0],["MONITOR ASUS VP227 (22\")",0],["MONOPATÍN",0],
+  ["MONOPATIN V 100",0],["MONOPATIN V101",0],["MONOPATIN V102",0],
+  ["MONOPATIN V301 1600W",0],["MONOPATIN XIAOMI",0],["MOPA  KABOLAI",2],
+  ["MOPA ESCURRIDORA",1],["MOPA PARA FREGAR",5],["MOPA TRIANGULAR",27],
+  ["MOTOSIERRA",0],["MOUSE",6],["MUG SUCTION 520ML",0],
+  ["NEO QLED 55* (OUTLET) / NUMERO 4",1],["NEO QLED CURVA  55* (OUTLET) / NUMERO 6",0],
+  ["NEO QLED GAMER  43* (OUTLET) / NUMERO 2",1],["NOTEBOOK ENOVA",-2],
+  ["P5 Y P5+",0],["PARCHE FRIO",115],["PARLANTE ASTRO YM121",99],
+  ["PARLANTE CH-833",15],["PARLANTE GRANDE",0],["PARLANTE PLUSE 5",43],
+  ["PARLANTES GENIUS",5],["PAVA ELECTRICA CECOTEC",0],["PAVA ELECTRICA CECOTEC NEO",0],
+  ["PAVA ELECTRICA CECOTEC TOUCH",1],["PAVA WINCO TOUCH 1.7 LITROS",1],
+  ["PAVAS (CAJA BLANCA Y ROJA)",4],["PEINE CON ESPEJO CAPIBARA/LABUBU",166],
+  ["PELOTA NRO 3",279],["PELOTAS NRO 5",111],["PELUCHE LABUBU CHICO",149],
+  ["PERCHEROS CON RUEDA",29],["PERFUME 9AM",0],["PERFUME 9PM",0],
+  ["PERFUME AFEEF",0],["PERFUME AL NASHAMA",0],["PERFUME AL QIAM SILVER",0],
+  ["PERFUME ASAD ZANZIBAR (LATTAFA)",0],["PERFUME BADE'E NEGRO (REPLICA)",0],
+  ["PERFUME BAYAAN",0],["PERFUME BHARARA KING",0],["PERFUME BLUE SAPHIRE",0],
+  ["PERFUME BRIOCHE VAINILLA",0],["PERFUME CLUB DE NUIT ICONIC",0],
+  ["PERFUME CLUB DE NUIT IMPERIAL",1],["PERFUME CLUB DE NUIT WOMAN",0],
+  ["PERFUME EMPORIO ARMANI",0],["PERFUME FAKAR LATTAFA",0],
+  ["PERFUME FAKHAR GOLD (REPLICA)",1],["PERFUME FAKHAR ROSE (REPLICA)",0],
+  ["PERFUME HARAMAIN AMBER OUD EXTREME",0],["PERFUME HARAMAIN AMBER OUD GOLD EDOTIOM",0],
+  ["PERFUME HARAMAIN AQUA DUBAI",0],["PERFUME HARAMAIN DUBAI NIGHT",0],
+  ["PERFUME HAWAS",0],["PERFUME HAYA",0],["PERFUME KHAMRAH (REPLICA)",0],
+  ["PERFUME MAAHIR BLACK",0],["PERFUME MARK HIM (REPLICA)",1],
+  ["PERFUME MAYAR NATURAL INTENSE",0],["PERFUME NORA PASSION",0],
+  ["PERFUME ODYSEY MANDARYN",0],["PERFUME ODYSEY SPECTRA",0],
+  ["PERFUME ODYSSEY CANDEE",0],["PERFUME ODYSSEY TYRANT",1],["PERFUME ONIX",0],
+  ["PERFUME ORIETION ARIENTION",0],["PERFUME QAED AL FURSAN ORIGINAL",0],
+  ["PERFUME SHAHEEN SILVER",0],["PERFUME TAIF",118],["PERFUME TERIAQ",0],
+  ["PERFUME THARAWAH SILVER",0],["PERFUME TUBEES",0],["PERFUME UKISS",26],
+  ["PERFUME YARA MOI  REPLICA 30ML",0],["PERFUME YARA PINK  REPLICA 30ML",0],
+  ["PERFUME YARA PINK (REPLICA)",0],["PERFUME YARA TOUS REPLICA 30ML",0],
+  ["PERFUME YARA VIOLETA",2],["PERFUME HAYAATI FLORENSE (REPLICA)",1],
+  ["PERUME YARA TOUS",0],["PILAS AA",0],["PILAS AAA",0],
+  ["PINCEL 12* (L-111)",25],["PISARRA DE NINO C/ CALCULADORA",50],
+  ["PISARRA PARA NINOS 9''",4],["PIZARRA 30X40 (L-924)",4],["PIZARRA 50X70 (L-926)",0],
+  ["PLANCHA A VAPOR MODELO W38",0],["PLANCHA SECA WINCO MODELO W35",1],
+  ["PLANCHITA DE PELO",22],["PORTA ROLLO PAPEL",58],["PRINT CAMARA",0],
+  ["PROYECTOR ASTRONAUTA",6],["PROYECTOR ASTRONAUTA MINI",3],["PROYECTOR BRILLA",1],
+  ["PROYECTOR C/ JUEGO BLANCO",0],["PROYECTOR C/ JUEGO ROJOS",2],["PROYECTOR COMUN",32],
+  ["PROYECTOR GAMER BRILLA",0],["PROYECTOR LAMBO TCH",0],["PROYECTOR MINI NUEVO",66],
+  ["PROYECTOR NUVOH",5],["PROYECTOR NUVOH GAMER",25],["PROYECTOR PRO AMARILLO",1],
+  ["PS5  DIGITAL",0],["PS5 DIGITAL (INCLUYE 2 JUEGOS)",0],["PS5 FISICA",0],
+  ["QUENCHER COMUN 1.2L",1],["QUENCHER CON DISENO",0],["QUENCHER CON DISEÑO 1.2L",0],
+  ["QUENCHER FALLADO",0],["QUENCHER NORMAL 1.2L",0],["QUENCHER RAYADOS/PROMO",0],
+  ["RACK COCINA",13],["RACK DE VINO CADENAS",5],["RACK MICROONDAS",11],
+  ["REGLA 15CM PACK X4 (L-646)",92],["RELOJ APPLE WATCH BLANCO Y GRIS",14],
+  ["RELOJ APPLE WATCH DORADO",0],["RELOJ H37 SMARTWATCH - AIRPODS MAX",34],
+  ["RELOJ H20 SMARTWATCH - AIRPODS",18],["RELOJ I 10 MINI",87],
+  ["RELOJ I 16 PLUS (SMART BRACALET)",76],["RELOJ T20 ULTRA",9],
+  ["RELOJ T800 ULTRA 2 (7 MALLAS )",10],["RELOJ T900 ULTRA 2",21],
+  ["RELOJ+AIPODS X8",27],["REMERAS",2763],["RESALTADOR 18* (L-499)",0],
+  ["ROBOT ASPIRADORA CONGA 2499",0],["ROBOT COCINA CARA",0],
+  ["ROCIADOR DE ACEITE (SPRAY AKRO OIL)",91],["SACAPUNTA AUTOMATICO (L-920)",21],
+  ["SANDWICHERA",0],["SANDWICHERA WINCO W-018",10],["SECA PLATO 1 PISO",21],
+  ["SECADOR DE PELO ECONOMICO",13],["SECADOR DE PELO MINI",13],
+  ["SECADOR DE PELO NEGRO Y ROJO 2000W",0],["SECADOR DE PELO VIOLETA  2000 W",0],
+  ["SECADOR REDONDO CHICO (FLUJO DIRECTO)",10],["SECADOR REDONDO GRANDE (FLUJO DIRECTO)",2],
+  ["SET CUCHILLO + TABLA 7 PIEZAS HESEEM",25],["SET DE BANO",89],
+  ["SET MARCADOR X24 COLORES",1],["SET MARCADOR X36 COLORES",0],
+  ["SET MARCADOR X60 COLORES",30],["SET X12 LAPICES (WB-9098)",15],
+  ["SET X12 LAPICES / 24 COLORES (WB-9101-12)",26],["SET X18 LAPICES/36 COLORES (WB-9101-18)",22],
+  ["SILLA DE OFICINA NOGA",6],["SILLA GAMER",3],["SILLA GERENTE DEADPRO",0],
+  ["SILLA MAGMA RGB (CON LUCES)",0],["SILLA OFICINA",0],["SILLA OFICINA PREMIUM",0],
+  ["SILLA TYPHON APOYA PIES",1],["SMART CUP 500ML",0],
+  ["SMART PORTABLE  SPEARKER (KARAOKE COLORFUL)",2],["SOPLADOR DE AIRE",17],
+  ["SOPORTE  CELULAR (PARA AUTO)",35],["SOPORTE TV",29],["SPRAY MUNDIAL",500],
+  ["TABLET ENOVA",11],["TABLET TCL NXTPAPER",0],["TACHO DE BASURA 50LTS",0],
+  ["TAG RASTREADOR (MINI TAG)",318],["TALADRO (NUEVO)",1],["TALADRO (VIEJO MODELO)",0],
+  ["TALADRO BAT KONAN",4],["TATETI (DECORACION)",6],["TAZA BEER PINTS",1],
+  ["TAZA BEERPINTS",0],["TCL TAB 11 (TABLET)",0],["teclado noga + mouse s5550",0],
+  ["teclado noga + mouse s5900",0],["teclado noga nkb78011",6],["TENDER NUVOH",7],
+  ["TENDER REDONDO PIE PREMIUM NUEVO",5],["TENDER REFORZADO  PREMIUM",12],
+  ["TENDER RETRACTIL",1],["TENDER RETRACTIL GRANDE (NUEVO)",15],["TERMO + MATE",2],
+  ["TERMO + TAZA",2],["TERMO + TAZA :",0],["TERMO 1.2L",0],
+  ["TERMO C/ PANTALLA 800 ML",0],["TERMO DIGITAL BEER PINTS 500ML",3],
+  ["TERMO DIGITAL SMART CUP 500ML",0],["TERMO MEDIA MANIJA",0],["TERMO MESSI",0],
+  ["TERMO ST MESSI 1.2L",0],["TERMO SYSETM",0],["TERMO VACUUM 1LT",2],
+  ["TERMO+MATE 1.4",2],["TERMOS ST COMUN 1.2L",0],["TERMOS ST SISTEM 1L",0],
+  ["TIJERA (L-273)",22],["TIZAS X24 (L-502)",24],["TOALLEROS",3],
+  ["TOSTADORA EXXTRATECH",0],["TOSTADORA CECOTEC",0],["TUBES ARABES",19],
+  ["TV 32 TENSEI",0],["TV 32* AOC",0],["TV 32* GADNIC",0],["TV 32* THS",0],
+  ["TV 43* OYILITY",0],["TV 65 BLUMENT",0],["TV ADMIRAL 32*",0],["TV ADMIRAL 43*",0],
+  ["TV ADMIRAL 50*",0],["TV BGH 32",0],["TV BGH 32''",0],["TV BGH 43''",0],
+  ["TV BGH 50''",0],["TV BOX (AMARILLO)",0],["TV BOX (AZUL)",40],
+  ["TV BOX (REPARADOS) BLANCO",0],["TV BOX (REPARADOS) NEGROS",837],
+  ["TV BOX (REPARADOS) VERDE",129],["TV BOX (ROJO)",116],["TV BOX BRILLA",0],
+  ["TV BOX NEGRO/ROJO (REPARADOS)",0],["TV BOX NEGROS 4K/8K",212],
+  ["TV BOX NUVOH",78],["TV BOX REPARADOS ROJOS",241],["TV ENOVA 43*",1],
+  ["TV ENOVA 50*",2],["TV ENOVA 65",0],["TV BGH 55\"",3],["TV ENOVA 75*",0],
+  ["TV HISENSE 32\"",0],["TV HISENSE 43\"",0],["TV KEN BROWN 55\"",0],
+  ["TV MIO 32*",0],["TV MIO 43",0],["TV MOTOROLA 32\"",0],
+  ["TV NOBLEX + ROKU 32*",0],["TV NOBLEX + ROKU 50*",0],["TV NOBLEX 32\"",0],
+  ["TV NOBLEX 43¨",0],["TV NOBLEX 50\"",0],["TV NOBLEX 55*",0],
+  ["TV NORMAL 40* (OUTLET) /  (NUMERO 4 , 5 Y 7)",0],
+  ["TV NORMAL 48* (OUTLET) (NUMERO 8 Y 9)",0],
+  ["TV NORMAL 49* (OUTLET) / NUMERO 5",1],
+  ["TV NORMAL 50*  (OUTLET) ( NUMERO  10 Y 11)",0],
+  ["TV NORMAL 50* NEO QLED (OUTLET) / NUMERO 7",0],
+  ["TV OYILITY 32*",0],["TV OYILITY 50\" SMART",0],["TV PHILIPS 32\"",0],
+  ["TV PHILIPS 43''",0],["TV PHILIPS 50*",0],["TV PHILIPS 6900 SERIE 2 32*",0],
+  ["TV PHILIPS 7300 SERIE 50*",0],["TV PHILIPS SERIE 6000 32*",0],
+  ["TV QUINT 32''",3],["TV QUINT 42\"",6],["TV QUINT 43''",1],["TV QUINT 50''",0],
+  ["TV RCA 32''",0],["TV RCA 43*",0],["TV RCA 75\"",0],
+  ["TV SAMSUNG 43\" OUTLET NORMAL/ NUMERO 1",0],["TV SAMSUNG 43*",0],
+  ["TV SAMSUNG 48\"",0],["TV SAMSUNG 55\"",0],["TV SAMSUNG 55*",0],
+  ["TV SAMSUNG 65\" EN CAJA",0],["TV SAMSUNG 65* OUTLET (CON DETALLE)",0],
+  ["TV SAMSUNG 75\" OUTLET (CON DETALLE)",1],
+  ["TV SAMSUNG OUTLET 55\"  CURVA / NUMERO 8",0],
+  ["TV SAMSUNG OUTLET 55\" NORMAL  (NUMERO 3)",1],
+  ["TV SAMSUNG T4300 32*",1],["TV SIERA 32*",10],["TV SMART ENOVA 32''",0],
+  ["TV STICK NARANJA 4K",24],["TV STICK NARANJA 8K",24],["TV STICK NUVOH",6],
+  ["TV STICK ROJO 8K",-2],["TV SUMSUNG OUTLET 40\"  (NUMERO 16 Y 17)",0],
+  ["TV TCL 43''",0],["TV TCL 43\" ( LIBERTADORES)",0],["TV TELEFUNKEN 32\"",0],
+  ["TV TELEFUNKEN 43\"",0],["TV TOP HOUSE 32\"",1],["TV TOP HOUSE 43\"",0],
+  ["TV TOP HOUSE 50\"",0],["TVBOX (BLANCO)",3],["VACUUM 420ML",0],
+  ["VACUUM FLASH SET",0],["VAPE BLACK SHEEPP 20K",0],["VAPE ELFBAR 10 K",0],
+  ["VAPE ELFBAR 40K",209],["VAPE IGNITE 120",0],["VAPE IGNITE 250V",0],
+  ["VAPE LOST MARY 2000",0],["VAPE ODYSEY WILD ONE",0],["VAPE RABBEATS 10000",7],
+  ["VAPE SUPREME",144],["VAPE V PLAY",32],
+  ["VASO CAFE DIGITAL COPO TERMICO VACUUM 460ml",0],
+  ["VASO CAFE DIGITAL VACUUM 500ML",0],["VASO CAFÉ MUGS 380ml",0],
+  ["VASO CAFETERO 500ML",0],["VASO COFFE MUGS 380ML",0],["VASO COLD 1250ML",0],
+  ["VASO DIGITAL TERMICO VACUUM 420ml",0],["VASO GZ C/PANTALLA 800ML",0],
+  ["VASO VACUUM FLASK SET",0],["VASOS NUBE CON MANIJA",46],["VENTILADOR 3 EN 1",2],
+  ["VENTILADOR DE TECHO NUEVO",1],["VENTILADOR NUVOH",81],["VENTILADORES SPRINT",28],
+  ["VOLANTE NOGA DRIFTER CON PEDALERA",2],["VOLANTE NOGA GAMING WHEEL",5],
+  ["WATCH ANDROID TV (VERDE)",130],["WATCH OM GOOGLE TV (AMARILLO)",0],
+  ["WEBCAM",0],["YARA MOI",0],["YOGURTERA ULTRACOM",0],
+  ["ZAPATO CRISTAL (DECORACION)",12],["SET CAROTE 21 PCS",3],["SILLA PLEGABLE",0],
+  ["PAVA NUVOH VIDRIO",10],["PAVA NUVOH NEGRA",14],["GAZEBOS NH-G2",0],
+  ["GAZEBOS NH-G1",23],["TV GADNIC 50\"",3],["TV SERIE DORADA 43\"",0],
+  ["TV SERIE DORADA 32\"",0],["COCINA INDUSTRIAL",0],["ESTUFA HALOGENA SPRINT",43],
+  ["ESTUFA 3 VELAS FIJA NUVOH",35],["RADIO DE MANO W2004",0],["PARLANTE RADIO",0],
+  ["PARLANTE NOGA P78",0],["ACEITE KARSEELL",71],["TV NOMADE 55\"",2],
+  ["TV NOMADE 43\"",3],["TV NOMADE 32\"",3],["TV KEN BROWN 43\"",0],
+  ["PAVA WINCO 1702 (GRIS)",7],["SILLA DE OFICINA (SHERENWOOD)",7],
+  ["MICROONDAS DIGITAL LUSQTOFF 20L",0],["RALLADOR ELECTRICO",1],
+  ["CAFETERA VERONA PLUS 600ML",3],["CAFETERA EXPRESSO LUSQTOFF LQ-EX008",1],
+  ["BALANZA BLAUPUNKT",3],["CINTA CAMINADORA FT-300",0],["CINTA CAMINADORA FT-200",2],
+  ["MOUSE OPTICO NOGA NGM-621",25],["MOUSE INALAMBRICO NOGA NGH-680",3],
+  ["LINTERNA STRONG RAY",23],["HORNO ELECTRICO TELEFUNKEN TF-E1500C",3],
+  ["FABRICA DE PASTA WINCO",0],["AURI GAMER NG-8620",9],
+  ["ANAFE SIMPLE TELEFUNKEN TF-AE5500",1],["ANAFE DOBLE TELEFUNKEN TF-AE10500",0],
+  ["TOSTADORA TELEFUNKEN EASYTOAST-PRO",4],
+  ["BATIDORA TELEFUNKEN  3 EN 1 10L PLANETARIUM 2000",1],
+  ["BATIDORA PLANETARIUM 1000 5.7L",0],["COCINA ROBOT TELEFUNKEN",4],
+  ["PAVA CRISTAL ZENITH",0],["PARRILLA ELECTRICA TELEFUNKEN",3],
+  ["OLLA A PRESION BLAUPUNKT",5],["CAFETERA TELEFUNKEN VENEZIA 1.5LTS",1],
+  ["HORNO ELECTRICO TELEFUNKEN TF-E552CA",2],
+  ["FREIDORA DE AIRE TELEFUNKEN EASYFRYER 9000",3],
+  ["FREIDORA DE AIRE TELEFUNKEN AEROFRYER 300",2],["SECADOR DE PELO ZENITH",2],
+  ["BARRA DE SONIDO POLARIS 700 TELEFUNKEN  + PARLANT",0],["PARLANTE POWERBASS 215",1],
+  ["HORNO PARA PAN LUSQTOFF",1],["PAVA ELECTRICA LUSQTOFF 1.7LTS NEGRA y BAGIE",5],
+  ["PAVA ELECTRICA C/RELOJ  LUSQTOFF VERDE Y BLANCA",3],["YOGUTHERA LUSQTOFF",0],
+  ["ASPIRADORA TELEFUNKEN TURBO EXPERT",0],["ARROCERA LUSQTOFF",0],
+  ["COMPRESOR DIGITAL S/CAJA",31],["CONVECTOR NUVOH",25],["LAVAVAJILLA DE MESADA",0],
+  ["SILLA DE 3009PVC SHERENWOOD",9],["CARPA AUTOARMABLE",2],["PAVA EMBASSY HE-EM1800",0],
+  ["HIDROLAVADORA BLAUPUNKT",1],["HORNO ELECTRICO PIONNER HOME 50LTS",1],
+  ["HORNO ELECTRICO PIONNER HOME 75LTS",11],["LAVARROPAS WANKE 20 kilos",0],
+  ["FREIDORA DE AIRE TELEFUNKEN EASYFRYER 6900",5],["COCINA USMAN 2 HORNALLAS",1],
+  ["BOTELLA SELECCION",57],["TECLADO+MOUSE COMBO S5800",5],
+  ["MICROONDAS MECANICO LUSQTOFF",4],["WAFLERAS WINCO W-17",0],["EXPRIMIDOR WINCO W-29",2],
+  ["HORNO ELECTRICO TELEFUNKEN TF-350C",2],["HORNO ELECTRICO TELEFUNKEN TF-E650C",1],
+  ["HORNO ELECTRICO LUSQTOFF LQ-HE85CL",0],["HORNO ELECTRICO LUSQTOFF LQ-HE45C",1],
+  ["CAFETERA LUSQTOFF LQ-EX010",0],["CAFETERA LUSQTOFF LQ-EX015",0],
+  ["TORRE DAiHATSU",1],["PARLANTE SONY SRS",3],["PARLANTE JBL 120",1],
+  ["PARLANTE  STRONBERG BURST-2",1],["CALOVENTOR WINCO",1],["BICI FIJA CL500",3],
+  ["HISENSE 50\"",0],["BICI FIJA CL-400",0],["BICI FIJA CL-600",0],
+  ["MONOPATIN V102",0],["JARRA ELECTRICA W1718",33],["PROYECTOR NURIK",0],
+  ["COMBO CABLE+CARG USA",8],["SILLA PLEGABLES   C4053   (SHERENWOOD)",8],
+  ["SILLON EJECUTIVO C418C (SHERENWOOD)",6],["LAVARROPAS EMBASSY 7 KG",0],
+  ["CALOVENTOR PIONEER PIO-204",50],["ESTUFA CUARZO PIONEER PIO-207",52],
+  ["AURIS NOGA 918 BT",10],["AURIS NOGA 922",14],
+  ["COCINA INDUSTRIAL USMAN COMPACT 5 HORNALLAS",1],["COCINA USMAN 4 HORNALLAS",0],
+  ["COCINA ELECTRICA EMBASSY",1],["HORNO ELECTRICO LQ 10L TRI-FORCE",3],
+  ["CALOVENTOR PIONEER PIO-203",33],["ESTUFA HALOGENA PIONEER PIO-205",44],
+  ["ESTUFA GARRAFERA PIONEER PH2001",14],["SECARROPA EMBASSY 5,5",-2],
+  ["MULTICOCINA WINCO W125",0],["PAVA E-601",22],["PAVA E-602",16],
+  ["PAVA E-603",19],["PAVA E-604",25],["PAVA E-607",24],
+  ["HORNO ELECTRICO TELEFUNKEN 250",0],["ANAFE INDIVIDUAL WINCO",12],
+  ["CALOVENTOR NUVOH",74],["IMPRESORA CANON G1110",1],["IMPRESORA CANON G3110",1],
+  ["TECLADO MECANICO  GANON",7],["COMBO NOGA S5600",4],["COMBO NOGA S5700",2],
+  ["RIPPLE PRO",1],["CALOVENTOR WINCO W114",108],["CONSOLA PORTATIL NOGA 500 EN 1",88],
+  ["CONSOLA PORTATIL NOGA 400 EN 1",25],["TOCADISCOS CELESTE 406",0],
+  ["AURI STROMBERG NEGRO QUIET ANC",1],["SET JARRA 5 PIEZAS VASOS",1],
+  ["COMPRESOR WINCO W4350",1],["PILAS 2.700",1],["MOUSE S1000 PLUS HP",2],
+  ["TV HISENSE 40\"",0],["CAVA DE VINO WINCO W423",4],["SAMSUNG A25",0],
+  ["COMIDA DE GATO",20],["PERECHERO ELECTRICO WANKE",1],["PARLANTE NOGA 420",2],
+  ["PARLANTE SONY XB23",0],["PARLANTE STROMBERG SPARK",3],["CAMARA NOGA NGW-20S",7],
+  ["CAMARA NOGA NGW-11",8],["CAMARA NOGA NGW-12",11],["CAMARA NOGA NGW-45",6],
+  ["AURICULARES NOGA ST-705",3],["TECLADO MARVO WS005",3],["TECLADO MARVO MAGMA M40",2],
+  ["NOMADE 55\" CON DETALLE",1],["PLANCHA A VAPOR ULTRACOMB PL4170",2],
+  ["POCHICLERA WINCO",6],["CONSOLA NOGA POKI 18",100],["XBOX SERIE S 512FB",0],
+  ["WIND 2",200],["WIND 3",20],["AURI NOGA BT WINS48",3],["AURI HP H10",1],
+  ["JOYSTICK DE PS3",1],["SECADOR DE ZAPATILLAS",1],["REPUESTO DE IMPRESORAS",2],
+  ["CAMPERAS DE INVIERNO",44],["VAPE DUMMY",134],["VAPE WAPOR PRO",200],
+  ["VAPE RAZ",200],["VAPE HQD",200],["VAPE OVNS",139],["VAPE GEEKBAR PULSE",517],
+  ["SILLON TEDDY",1],["PARLANTE NOGA TORNADO",1],["GALAXY BUDS PRO300",272],
+  ["IGNITE MIX",8],["PLANCHA A VAPOR WINCO W2021",4],["TV TELEFUNKEN 50 \"",3],
+  ["ROLLER ST MAX CHILL",1],["ROLLER MAX T 38",1],["ROLLER MAX T40",1],
+  ["COMBO GAMER NKB-403",1],["PAVA ELECTRICA LQ-PV802",1],
+  ["PARLANTE STROMBERG BURST-2",1],["PARLANTE THINK PLUS K3 PRO",1],
+  ["TABLET 10\" 4GB RAM 64GB TABI0002",3],["SET DE HERRAMIENTA 108PCS TOOLKIT3",10],
+  ["JUEGO DE TUBOS 47PCS KHERRAM7",13],["MASAJEADOR CERVICAL Y LUMBAR MASAJ03N",20],
+  ["INFLADOR  INALAMBRICO 7800 MHA AV0000221",10],
+  ["INFLADOR DE NEUMATICOS MINI AV0000029",10],["GAZEBO 2X2  GAZEBO10",5],
+  ["GAZEBO 3X3 GAZEBO01",4],["CINTA PARA CORRER FORCE CINTA034",3],
+  ["BICICLET FIJA FITNES16",5],["ESCRITORIO GAMER EN L ESCRI016",10],
+  ["LIMP REMOVEDOR DE PUNTOS NEGROS CLEAN03",19],["CORTADORA DE PELO RECARGABLE CORTPE15",0],
+  ["MAQ DE CORTAR PELO T900 3 PEINES CORTPE04",20],["MAQ DE CORTAR PELO 8 ACC CORTPE02",4],
+  ["COLCHON INF SOUTHPORT CON PEDAL CAMP0146",2],["COLCHON INF 1 PLAZA COLINF11",5],
+  ["SILLA PLEGABLES GADNI CAMPING  CAMP0008",10],
+  ["AURICULAR GAMER ONIKUMA K19 GAMER079",5],
+  ["AURICULAR GAMER ONIKUMA X25 GAMER092",5],
+  ["BOMBA DE VACIO PARA VINOS VINO0012",50],
+  ["SET P/VINO SACACORCHO AUTOMATICO VINO0010",10],
+  ["DECANTADOR VINO PROFESIONAL VINO0006",10],
+  ["CAFETERA PRENSA FRANCESA 1L CAFET02",50],
+  ["TACHO DE BASURA 20LTS TACH0095",10],["PORTA CAPSULAS",10],
+  ["META QUEST 2",0],["ARROCERA WINCO W141",14],["ASPERSOR DE METAL",4],
+  ["ALFOMBRAS NORDICAS 2X1.4",1],["ESPECIERO DE MADER",4],["PARLANTE WINCO W219",5],
+  ["PARLANTE WINCO W65",5],["FREIDORA WINCO W131",6],
+  ["HORNO ELECTRICO WINCO W1145",4],["HORNO ELECTRICO WINCO W516",4],
+  ["FREIDORA WINCO  W132",4],["SET DESPADOR DE VINO WINCO W4501",40],
+  ["HORNO FREIDORA DE AIRE WINCO W2902",4],["HORNO ELECTRICO WINCO W1134",4],
+  ["HORNO ELECTRICO WINCO W2123",4],["TOSTADORA WINCO W835",11],
+  ["SANDWICHERA WINCO W017",11],["SANDWICHERA WINCO W16",12],
+  ["PARRILLA ELECTRICA WINCO W2016",12],["HORNO FREIDORA WINCO W1128",4],
+  ["CAFETERA  WINCO W1927",6],["HORNO MICROONDAS 25LT W2003",4],
+  ["ESPUMADOR DE LECHE W870",12],["MICROONDAS  BLANCO WINCO W2011",4],
+  ["BICI SPINING  GADNIC B-18 ",3]
+];
+
+// ── Firebase config ──────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyACx3vAUcRhjUWpTq1kKb46WCgbEShiYJY",
+  authDomain: "inventario-pm.firebaseapp.com",
+  databaseURL: "https://inventario-pm-default-rtdb.firebaseio.com",
+  projectId: "inventario-pm",
+  storageBucket: "inventario-pm.firebasestorage.app",
+  messagingSenderId: "1047594523707",
+  appId: "1:1047594523707:web:f782cd181f7e1af5fe101e"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ── Estado local ─────────────────────────────────────────────
+const EMPLOYEES = ['felipe','juan','fede','azul','nahuel'];
+let counts = { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} };
+let closed = {};
+let stockData = null;
+let baseline = PRODUCTS.map(p => p[1]); // stock base (se actualiza por semana)
+let weekLabel = { old: '29/06', new: '06/07' };
+let currentStockFilter = 'all';
+let currentStockSearch = '';
+let saveTimer = {};
+
+// ── Construcción de listas ───────────────────────────────────
+function buildList(emp) {
+  const container = document.getElementById('list-' + emp);
+  container.innerHTML = '';
+  getProductList().forEach(([name], i) => {
+    const row = document.createElement('div');
+    row.className = 'product-row';
+    row.dataset.name = name.toLowerCase();
+    row.dataset.idx = i;
+    row.innerHTML = `
+      <span class="product-name">${name}</span>
+      <input class="product-input" id="inp-${emp}-${i}"
+        type="number" min="0" placeholder="0"
+        onchange="updateCount('${emp}', ${i}, this)"
+        oninput="updateCount('${emp}', ${i}, this)">
+    `;
+    container.appendChild(row);
+  });
+}
+
+function refreshList(emp) {
+  getProductList().forEach(([name], i) => {
+    const input = document.getElementById(`inp-${emp}-${i}`);
+    if (!input) return;
+    const val = counts[emp]?.[i];
+    input.value = val || '';
+    input.classList.toggle('filled', !!val);
+    input.closest('.product-row').classList.toggle('has-value', !!val);
+  });
+  updateTotals(emp);
+}
+
+// ── Actualizar conteo (debounced save a Firebase) ────────────
+function updateCount(emp, idx, input) {
+  if (closed[emp]) { input.value = counts[emp]?.[idx] || ''; return; }
+  const val = input.value === '' ? 0 : parseInt(input.value) || 0;
+  if (!counts[emp]) counts[emp] = {};
+  if (val === 0) {
+    delete counts[emp][idx];
+    input.classList.remove('filled');
+    input.closest('.product-row').classList.remove('has-value');
+  } else {
+    counts[emp][idx] = val;
+    input.classList.add('filled');
+    input.closest('.product-row').classList.add('has-value');
+  }
+  updateTotals(emp);
+  updateSummaryCards();
+  // Debounce: espera 800ms de inactividad antes de guardar en Firebase
+  clearTimeout(saveTimer[emp]);
+  saveTimer[emp] = setTimeout(() => {
+    db.ref(`counts/${emp}`).set(counts[emp]);
+  }, 800);
+}
+
+function updateTotals(emp) {
+  const total = Object.values(counts[emp] || {}).reduce((a,b) => a + (b||0), 0);
+  const filled = Object.keys(counts[emp] || {}).length;
+  document.getElementById('total-' + emp).textContent = total + ' uds';
+  const pct = Math.min(100, Math.round(filled / PRODUCTS.length * 100));
+  document.getElementById('prog-' + emp).style.width = pct + '%';
+}
+
+function updateSummaryCards() {
+  EMPLOYEES.forEach(emp => {
+    const total = Object.values(counts[emp] || {}).reduce((a,b) => a + (b||0), 0);
+    document.getElementById('card-' + emp).textContent = total;
+  });
+}
+
+// ── Cerrar conteo ─────────────────────────────────────────────
+function cerrarConteo(emp) {
+  if (closed[emp]) return;
+  const total = Object.values(counts[emp] || {}).reduce((a,b) => a + (b||0), 0);
+  if (!confirm(`¿Cerrar el conteo de ${emp.toUpperCase()}?\nTotal contado: ${total} unidades.\n\nUna vez cerrado no se puede editar.`)) return;
+  db.ref(`closed/${emp}`).set(true);
+  showToast(`✅ Conteo de ${emp.toUpperCase()} cerrado`);
+}
+
+function applyClosedState(emp) {
+  if (!closed[emp]) return;
+  document.querySelectorAll(`#list-${emp} .product-input`).forEach(i => i.disabled = true);
+  const searchEl = document.getElementById(`search-${emp}`);
+  if (searchEl) searchEl.disabled = true;
+  const btn = document.getElementById(`closebtn-${emp}`);
+  if (btn) { btn.className = 'close-btn closed'; btn.textContent = '✅ CONTEO CERRADO'; }
+  const sub = document.getElementById(`subtitle-${emp}`);
+  if (sub) sub.textContent = 'Conteo finalizado y cerrado';
+  const tabs = ['base','felipe','juan','fede','azul','nahuel','stock'];
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    if (tabs[i] === emp && !t.querySelector('.closed-badge')) {
+      t.innerHTML = t.innerHTML + '<span class="closed-badge">✓</span>';
+    }
+  });
+}
+
+function updateCopySection() {
+  const allClosed = EMPLOYEES.every(e => closed[e]);
+  const pending = EMPLOYEES.filter(e => !closed[e]);
+  document.getElementById('copy-section').style.display = allClosed ? 'block' : 'none';
+  document.getElementById('pending-section').style.display = (!allClosed && pending.length < 4) ? 'block' : 'none';
+  if (!allClosed && pending.length < 4) {
+    document.getElementById('pending-list').innerHTML = pending.map(e =>
+      `<span style="background:#2a1a1a;border:1px solid #e94560;color:#e94560;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">${e.toUpperCase()}</span>`
+    ).join('');
+  }
+}
+
+// ── Copiar inventario completo ────────────────────────────────
+function copiarInventario() {
+  const lines = [`INVENTARIO ${weekLabel.new}`, '='.repeat(40)];
+  getProductList().forEach(([name], i) => {
+    let total = 0;
+    EMPLOYEES.forEach(emp => { total += counts[emp]?.[i] || 0; });
+    if (total > 0) lines.push(`${name}\t${total}`);
+  });
+  lines.push('\n--- DETALLE POR EMPLEADO ---');
+  EMPLOYEES.forEach(emp => {
+    lines.push(`\n${emp.toUpperCase()}:`);
+    PRODUCTS.forEach(([name], i) => {
+      const val = counts[emp]?.[i];
+      if (val) lines.push(`  ${name}: ${val}`);
+    });
+  });
+  copiarTexto(lines.join('\n'), '📋 ¡Inventario completo copiado!');
+}
+
+// ── Copiar solo números para Excel (uno por línea, mismo orden que productos) ──
+function copiarParaExcel() {
+  const lines = getProductList().map((_, i) => {
+    let total = 0;
+    EMPLOYEES.forEach(emp => { total += counts[emp]?.[i] || 0; });
+    return total;
+  });
+  copiarTexto(lines.join('\n'), '📊 ¡Números copiados! Pegá en Excel con Ctrl+V');
+}
+
+function copiarTexto(text, msg) {
+  navigator.clipboard.writeText(text).then(() => showToast(msg)).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    showToast(msg);
+  });
+}
+
+// ── Cargar inventario final ───────────────────────────────────
+function cargarInventario() {
+  const newCounts = getProductList().map((_, i) => {
+    let total = 0;
+    EMPLOYEES.forEach(emp => { total += counts[emp]?.[i] || 0; });
+    return total;
+  });
+  db.ref('stock_final').set(newCounts).then(() => {
+    showToast(`✅ Inventario cargado — ${weekLabel.new}`);
+    document.getElementById('nueva-semana-section').style.display = 'block';
+  });
+}
+
+// ── Nueva semana ──────────────────────────────────────────────
+function nuevaSemana() {
+  if (!stockData) { showToast('⚠️ Primero cargá el inventario'); return; }
+  if (!confirm('¿Cerrar esta semana y comenzar una nueva?\n\nEl stock contado pasará a ser el stock base de la próxima semana.\nSe borrarán todos los conteos actuales.')) return;
+
+  // Calcular fechas de la próxima semana
+  const [d, m] = weekLabel.new.split('/').map(Number);
+  const nextStart = new Date(2025, m - 1, d);
+  const nextEnd = new Date(nextStart); nextEnd.setDate(nextEnd.getDate() + 7);
+  const fmt = d => String(d).padStart(2,'0');
+  const newOld = `${fmt(nextStart.getDate())}/${fmt(nextStart.getMonth()+1)}`;
+  const newNew = `${fmt(nextEnd.getDate())}/${fmt(nextEnd.getMonth()+1)}`;
+
+  const updates = {
+    baseline: stockData,
+    'week/old': newOld,
+    'week/new': newNew,
+    counts: { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} },
+    closed: null,
+    stock_final: null
+  };
+
+  db.ref('/').update(updates).then(() => {
+    showToast(`✅ ¡Nueva semana iniciada! ${newOld} → ${newNew}`);
+    document.getElementById('nueva-semana-section').style.display = 'none';
+  });
+}
+
+// ── Tabla de stock ────────────────────────────────────────────
+function renderStockTable() {
+  document.getElementById('week-label').textContent = `Stock viejo: ${weekLabel.old} → Nuevo conteo: ${weekLabel.new}`;
+  document.getElementById('col-old').textContent = weekLabel.old;
+  document.getElementById('col-new').textContent = weekLabel.new;
+
+  const container = document.getElementById('stock-list');
+  container.innerHTML = '';
+  getProductList().forEach(([name], i) => {
+    const oldStock = baseline[i] ?? 0;
+    const newStock = stockData ? (stockData[i] || 0) : null;
+    const diff = stockData ? newStock - oldStock : null;
+    let passFilter = true;
+    if (currentStockFilter === 'diff' && diff === 0) passFilter = false;
+    if (currentStockFilter === 'neg' && (diff === null || diff >= 0)) passFilter = false;
+    if (currentStockFilter === 'pos' && (diff === null || diff <= 0)) passFilter = false;
+    if (currentStockSearch && !name.toLowerCase().includes(currentStockSearch)) passFilter = false;
+    if (!passFilter) return;
+    const row = document.createElement('div');
+    row.className = 'stock-row' + (diff !== 0 && diff !== null ? ' changed' : '');
+    const diffClass = diff === null ? '' : diff > 0 ? 'pos' : diff < 0 ? 'neg' : 'zero';
+    const diffText = diff === null ? '—' : (diff > 0 ? '+' + diff : diff === 0 ? '=' : diff);
+    row.innerHTML = `
+      <span class="pname">${name}</span>
+      <span class="val">${oldStock}</span>
+      <span class="val">${newStock !== null ? newStock : '—'}</span>
+      <span class="val diff ${diffClass}">${diffText}</span>
+    `;
+    container.appendChild(row);
+  });
+  if (container.children.length === 0)
+    container.innerHTML = '<div class="no-results">Sin resultados</div>';
+  updateSummaryCards();
+}
+
+function guardarFechas() {
+  const oldVal = document.getElementById('input-week-old').value.trim();
+  const newVal = document.getElementById('input-week-new').value.trim();
+  if (!oldVal || !newVal) { showToast('⚠️ Completá las dos fechas'); return; }
+  db.ref('week').set({ old: oldVal, new: newVal }).then(() => {
+    showToast('✅ Fechas actualizadas');
+    document.getElementById('input-week-old').value = '';
+    document.getElementById('input-week-new').value = '';
+  });
+}
+
+function filterStock(type, el) {
+  currentStockFilter = type;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderStockTable();
+}
+
+function filterStockSearch(val) {
+  currentStockSearch = val.toLowerCase();
+  renderStockTable();
+}
+
+// ── Stock Base ────────────────────────────────────────────────
+function buildBaseList() {
+  const container = document.getElementById('list-base');
+  container.innerHTML = '';
+  const allProducts = getProductList();
+  allProducts.forEach(([name], i) => {
+    const val = baseline[i] ?? 0;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 80px;padding:8px 12px;border-top:1px solid #1a1a1a;align-items:center;font-size:13px;';
+    row.style.background = i % 2 === 0 ? '#111' : 'transparent';
+    row.innerHTML = `
+      <span style="color:#ccc;line-height:1.3">${name}</span>
+      <span style="text-align:center;font-weight:600;color:${val > 0 ? '#10b981' : '#444'}">${val}</span>
+    `;
+    container.appendChild(row);
+  });
+}
+
+// Devuelve PRODUCTS + productos extra de Firebase
+let extraProducts = [];
+function getProductList() {
+  return [...PRODUCTS.map(([n]) => [n]), ...extraProducts.map(([n]) => [n])];
+}
+
+function cargarBase() {
+  const text = document.getElementById('paste-area').value.trim();
+  if (!text) { showToast('⚠️ Pegá datos primero'); return; }
+
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const tieneNombres = lines.some(l => l.includes('\t'));
+
+  const newBaseline = new Array(PRODUCTS.length + extraProducts.length).fill(0);
+  const newExtras = [...extraProducts];
+  let nuevos = 0;
+
+  if (tieneNombres) {
+    // MODO LISTA COMPLETA: NOMBRE\tCANTIDAD
+    lines.forEach(line => {
+      if (!line.includes('\t')) return;
+      const [rawName, rawQty] = line.split('\t');
+      const name = rawName.trim();
+      const qty = parseInt(rawQty) || 0;
+      const nameUp = name.toUpperCase();
+
+      // Buscar en PRODUCTS
+      const idxP = PRODUCTS.findIndex(([n]) => n.toUpperCase() === nameUp);
+      if (idxP >= 0) { newBaseline[idxP] = qty; return; }
+
+      // Buscar en extras
+      const idxE = newExtras.findIndex(([n]) => n.toUpperCase() === nameUp);
+      if (idxE >= 0) { newBaseline[PRODUCTS.length + idxE] = qty; return; }
+
+      // Producto nuevo → agregar
+      newExtras.push([name]);
+      newBaseline[PRODUCTS.length + newExtras.length - 1] = qty;
+      nuevos++;
+    });
+  } else {
+    // MODO SOLO NÚMEROS: por posición
+    lines.forEach((line, i) => {
+      const qty = parseInt(line);
+      if (!isNaN(qty)) newBaseline[i] = qty;
+    });
+  }
+
+  const updates = { baseline: newBaseline, extra_products: newExtras.length ? newExtras : null };
+  db.ref('/').update(updates).then(() => {
+    document.getElementById('paste-area').value = '';
+    const cargados = newBaseline.filter(v => v > 0).length;
+    const msg = nuevos > 0
+      ? `✅ Base cargada — ${cargados} productos (${nuevos} nuevos agregados)`
+      : `✅ Base cargada — ${cargados} productos`;
+    showToast(msg);
+  });
+}
+
+function filterProducts(emp, query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll(`#list-${emp} .product-row`).forEach(row => {
+    row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+
+let stockUnlocked = false;
+
+function verificarPassword() {
+  const input = document.getElementById('stock-password-input');
+  if (input.value === 'NAMA1122') {
+    stockUnlocked = true;
+    input.value = '';
+    document.getElementById('stock-password-error').style.display = 'none';
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-stock').classList.add('active');
+    renderStockTable(); updateCopySection();
+  } else {
+    document.getElementById('stock-password-error').style.display = 'block';
+    input.value = '';
+    input.focus();
+  }
+}
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const tabs = ['base','felipe','juan','fede','azul','nahuel','stock'];
+    t.classList.toggle('active', tabs[i] === tab);
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  if (tab === 'stock' && !stockUnlocked) {
+    document.getElementById('panel-stock-lock').classList.add('active');
+    document.getElementById('stock-password-input').focus();
+    document.getElementById('save-btn').style.display = 'none';
+    return;
+  }
+  document.getElementById('panel-' + tab).classList.add('active');
+  document.getElementById('save-btn').style.display = (tab === 'stock' || tab === 'base') ? 'none' : 'block';
+  if (tab === 'stock') { renderStockTable(); updateCopySection(); }
+  if (tab === 'base') buildBaseList();
+}
+
+function saveProgress() {
+  EMPLOYEES.forEach(emp => db.ref(`counts/${emp}`).set(counts[emp]));
+  showToast('✅ Guardado en Firebase');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Init con listeners en tiempo real ────────────────────────
+EMPLOYEES.forEach(emp => buildList(emp));
+document.getElementById('save-btn').style.display = 'block';
+
+// Cargar productos extra
+db.ref('extra_products').on('value', snap => {
+  extraProducts = snap.val() || [];
+  EMPLOYEES.forEach(emp => buildList(emp));
+});
+
+// Cargar baseline (stock base de la semana)
+db.ref('baseline').on('value', snap => {
+  if (snap.val()) baseline = snap.val();
+  renderStockTable();
+  if (document.getElementById('panel-base').classList.contains('active')) buildBaseList();
+});
+
+// Cargar etiquetas de semana
+db.ref('week').on('value', snap => {
+  const w = snap.val();
+  if (w) weekLabel = { old: w.old, new: w.new };
+  renderStockTable();
+});
+
+// Escuchar conteos en tiempo real
+EMPLOYEES.forEach(emp => {
+  db.ref(`counts/${emp}`).on('value', snap => {
+    counts[emp] = snap.val() || {};
+    refreshList(emp);
+    updateSummaryCards();
+  });
+});
+
+// Escuchar cierres en tiempo real
+db.ref('closed').on('value', snap => {
+  closed = snap.val() || {};
+  EMPLOYEES.forEach(emp => applyClosedState(emp));
+  updateCopySection();
+});
+
+// Escuchar stock final en tiempo real
+db.ref('stock_final').on('value', snap => {
+  stockData = snap.val() || null;
+  if (stockData) document.getElementById('nueva-semana-section').style.display = 'block';
+  renderStockTable();
+});
+</script>
+</body>
+</html>
