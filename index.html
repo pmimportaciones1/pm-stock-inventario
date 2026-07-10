@@ -811,11 +811,13 @@ function copiarInventario() {
 }
 
 // ── Copiar solo números para Excel (uno por línea, mismo orden que productos) ──
+// Cada número sale con "=" adelante (sin espacio) para que en Sheets/Excel
+// se pegue como fórmula (ej: =394).
 function copiarParaExcel() {
   const lines = getProductList().map((_, i) => {
     let total = 0;
     EMPLOYEES.forEach(emp => { total += counts[emp]?.[i] || 0; });
-    return total;
+    return '=' + total;
   });
   copiarTexto(lines.join('\n'), '📊 ¡Números copiados! Pegá en Excel con Ctrl+V');
 }
