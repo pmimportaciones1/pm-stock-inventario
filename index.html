@@ -63,7 +63,7 @@
 
   .close-btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 14px; transition: all 0.2s; }
   .close-btn.open { background: #1a1a2e; border: 2px solid #e94560; color: #e94560; }
-  .close-btn.closed { background: #1a3a1a; border: 2px solid #10b981; color: #10b981; cursor: default; }
+  .close-btn.closed { background: #1a3a1a; border: 2px solid #10b981; color: #10b981; cursor: pointer; }
 
   .copy-section { background: #1a2e1a; border: 2px solid #10b981; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
   .copy-section h3 { color: #10b981; font-size: 15px; margin-bottom: 6px; }
@@ -762,29 +762,47 @@ function updateSummaryCards() {
   });
 }
 
-// ── Cerrar conteo ─────────────────────────────────────────────
+// ── Cerrar / reabrir conteo ────────────────────────────────────
 function cerrarConteo(emp) {
   if (closed[emp]) return;
   const total = Object.values(counts[emp] || {}).reduce((a,b) => a + (b||0), 0);
-  if (!confirm(`¿Cerrar el conteo de ${emp.toUpperCase()}?\nTotal contado: ${total} unidades.\n\nUna vez cerrado no se puede editar.`)) return;
+  if (!confirm(`¿Cerrar el conteo de ${emp.toUpperCase()}?\nTotal contado: ${total} unidades.\n\nUna vez cerrado no se puede editar (salvo que lo reabras).`)) return;
   db.ref(`closed/${emp}`).set(true);
   showToast(`✅ Conteo de ${emp.toUpperCase()} cerrado`);
 }
 
-function applyClosedState(emp) {
+function reabrirConteo(emp) {
   if (!closed[emp]) return;
-  document.querySelectorAll(`#list-${emp} .product-input`).forEach(i => i.disabled = true);
+  if (!confirm(`¿Reabrir el conteo de ${emp.toUpperCase()} para poder editarlo de nuevo?`)) return;
+  db.ref(`closed/${emp}`).set(false);
+  showToast(`🔓 Conteo de ${emp.toUpperCase()} reabierto`);
+}
+
+function applyClosedState(emp) {
+  const isClosed = !!closed[emp];
+  document.querySelectorAll(`#list-${emp} .product-input`).forEach(i => i.disabled = isClosed);
   const searchEl = document.getElementById(`search-${emp}`);
-  if (searchEl) searchEl.disabled = true;
+  if (searchEl) searchEl.disabled = isClosed;
   const btn = document.getElementById(`closebtn-${emp}`);
-  if (btn) { btn.className = 'close-btn closed'; btn.textContent = '✅ CONTEO CERRADO'; }
+  if (btn) {
+    if (isClosed) {
+      btn.className = 'close-btn closed';
+      btn.textContent = '🔓 REABRIR CONTEO';
+      btn.onclick = () => reabrirConteo(emp);
+    } else {
+      btn.className = 'close-btn open';
+      btn.textContent = '🔒 CERRAR MI CONTEO';
+      btn.onclick = () => cerrarConteo(emp);
+    }
+  }
   const sub = document.getElementById(`subtitle-${emp}`);
-  if (sub) sub.textContent = 'Conteo finalizado y cerrado';
+  if (sub) sub.textContent = isClosed ? 'Conteo finalizado y cerrado' : 'Cargá las cantidades que contás';
   const tabs = ['base','felipe','juan','fede','azul','nahuel','stock'];
   document.querySelectorAll('.tab').forEach((t,i) => {
-    if (tabs[i] === emp && !t.querySelector('.closed-badge')) {
-      t.innerHTML = t.innerHTML + '<span class="closed-badge">✓</span>';
-    }
+    if (tabs[i] !== emp) return;
+    const badge = t.querySelector('.closed-badge');
+    if (isClosed && !badge) t.innerHTML = t.innerHTML + '<span class="closed-badge">✓</span>';
+    if (!isClosed && badge) badge.remove();
   });
 }
 
