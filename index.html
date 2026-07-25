@@ -136,7 +136,7 @@
 
 <div class="header">
   <h1>📦 PM Stock</h1>
-  <span class="week">Semana 29/06 → 06/07</span>
+  <span class="week" id="header-week">Semana 29/06 → 06/07</span>
 </div>
 
 <div class="tabs">
@@ -1159,6 +1159,8 @@ db.ref('baseline').on('value', snap => {
 db.ref('week').on('value', snap => {
   const w = snap.val();
   if (w) weekLabel = { old: w.old, new: w.new };
+  const headerWeek = document.getElementById('header-week');
+  if (headerWeek) headerWeek.textContent = `Semana ${weekLabel.old} → ${weekLabel.new}`;
   renderStockTable();
 });
 
