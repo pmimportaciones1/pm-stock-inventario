@@ -1001,6 +1001,23 @@ function cargarBase() {
 
   if (tieneNombres) {
     // MODO LISTA COMPLETA: NOMBRE\tCANTIDAD
+    // Importante: puede haber productos DISTINTOS con el mismo nombre (o el
+    // mismo nombre con espacios de más). Para no fusionarlos por error,
+    // armamos una "cola" de posiciones por cada nombre normalizado, y cada
+    // vez que aparece ese nombre en lo pegado se va tomando la siguiente
+    // posición de la cola (en el mismo orden en que ya estaban guardadas).
+    // Si el nombre aparece más veces de las que hay guardadas, esas de más
+    // se agregan como productos nuevos (no se pisa ni se fusiona nada).
+    const colasPorNombre = {};
+    PRODUCTS.forEach(([n], i) => {
+      const k = normalizarNombreStock(n);
+      (colasPorNombre[k] = colasPorNombre[k] || []).push(i);
+    });
+    newExtras.forEach(([n], i) => {
+      const k = normalizarNombreStock(n);
+      (colasPorNombre[k] = colasPorNombre[k] || []).push(PRODUCTS.length + i);
+    });
+
     lines.forEach(line => {
       if (!line.includes('\t')) return;
       const [rawName, rawQty] = line.split('\t');
@@ -1008,15 +1025,14 @@ function cargarBase() {
       const qty = parseInt(rawQty) || 0;
       const nameUp = normalizarNombreStock(name);
 
-      // Buscar en PRODUCTS
-      const idxP = PRODUCTS.findIndex(([n]) => normalizarNombreStock(n) === nameUp);
-      if (idxP >= 0) { newBaseline[idxP] = qty; return; }
+      const cola = colasPorNombre[nameUp];
+      if (cola && cola.length) {
+        const idx = cola.shift();
+        newBaseline[idx] = qty;
+        return;
+      }
 
-      // Buscar en extras
-      const idxE = newExtras.findIndex(([n]) => normalizarNombreStock(n) === nameUp);
-      if (idxE >= 0) { newBaseline[PRODUCTS.length + idxE] = qty; return; }
-
-      // Producto nuevo → agregar
+      // Producto nuevo (o repetido más veces de las que había) → agregar
       newExtras.push([name]);
       newBaseline[PRODUCTS.length + newExtras.length - 1] = qty;
       nuevos++;
