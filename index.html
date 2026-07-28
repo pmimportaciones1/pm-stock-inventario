@@ -84,9 +84,10 @@
   .load-btn:active { transform: scale(0.98); }
 
   .stock-table { border-radius: 10px; overflow: hidden; border: 1px solid #222; }
-  .stock-table-header { display: grid; grid-template-columns: 1fr 80px 80px 80px; background: #111; padding: 8px 12px; font-size: 11px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.5px; gap: 6px; }
-  .stock-row { display: grid; grid-template-columns: 1fr 80px 80px 80px; padding: 8px 12px; font-size: 12px; gap: 6px; align-items: center; border-top: 1px solid #1a1a1a; }
+  .stock-table-header { display: grid; grid-template-columns: 34px 1fr 80px 80px 80px; background: #111; padding: 8px 12px; font-size: 11px; font-weight: 700; color: #777; text-transform: uppercase; letter-spacing: 0.5px; gap: 6px; }
+  .stock-row { display: grid; grid-template-columns: 34px 1fr 80px 80px 80px; padding: 8px 12px; font-size: 12px; gap: 6px; align-items: center; border-top: 1px solid #1a1a1a; }
   .stock-row:nth-child(even) { background: #111; }
+  .stock-row .pnum { color: #555; font-size: 11px; text-align: right; }
   .stock-row .pname { color: #ccc; line-height: 1.3; }
   .stock-row .val { text-align: center; font-weight: 600; }
   .stock-row .diff.pos { color: #10b981; }
@@ -116,7 +117,7 @@
   .progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
 
   @media (max-width: 400px) {
-    .stock-table-header, .stock-row { grid-template-columns: 1fr 65px 65px 65px; font-size: 11px; padding: 7px 8px; }
+    .stock-table-header, .stock-row { grid-template-columns: 26px 1fr 65px 65px 65px; font-size: 11px; padding: 7px 8px; }
   }
 
   /* ===== REFRESH VISUAL MODERNO ===== */
@@ -147,6 +148,7 @@
   <div class="tab" onclick="showTab('azul')">👩 AZUL</div>
   <div class="tab" onclick="showTab('nahuel')">👨 NAHUEL</div>
   <div class="tab" onclick="showTab('stock')">📊 STOCK ACTUAL</div>
+  <div class="tab" onclick="showTab('historial')">🕓 HISTORIAL</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -322,6 +324,7 @@
 
   <div class="stock-table">
     <div class="stock-table-header">
+      <span>#</span>
       <span>PRODUCTO</span>
       <span style="text-align:center" id="col-old">29/06</span>
       <span style="text-align:center" id="col-new">06/07</span>
@@ -329,6 +332,16 @@
     </div>
     <div id="stock-list"></div>
   </div>
+</div>
+
+<!-- HISTORIAL -->
+<div class="panel" id="panel-historial">
+  <div style="background:#1a1a2e;border-radius:10px;padding:14px;margin-bottom:12px;border-left:4px solid #8b5cf6;">
+    <h2 style="color:#8b5cf6;font-size:16px;font-weight:700;">🕓 Historial de respaldos</h2>
+    <p style="font-size:12px;color:#aaa;margin-top:4px;">Cada vez que se reemplaza el stock base o se cierra una semana, se guarda automáticamente una copia acá. Si algo se pisa por error, se puede restaurar.</p>
+  </div>
+  <button onclick="guardarHistorial('Manual')" style="width:100%;padding:12px;background:#1a1a2e;border:2px solid #8b5cf6;color:#8b5cf6;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:14px;">📸 GUARDAR COPIA AHORA</button>
+  <div id="historial-list"></div>
 </div>
 
 <button class="save-btn" id="save-btn" onclick="saveProgress()" style="display:none">💾 Guardar</button>
@@ -800,7 +813,7 @@ function applyClosedState(emp) {
   }
   const sub = document.getElementById(`subtitle-${emp}`);
   if (sub) sub.textContent = isClosed ? 'Conteo finalizado y cerrado' : 'Cargá las cantidades que contás';
-  const tabs = ['base','felipe','juan','fede','azul','nahuel','stock'];
+  const tabs = ['base','felipe','juan','fede','azul','nahuel','stock','historial'];
   document.querySelectorAll('.tab').forEach((t,i) => {
     if (tabs[i] !== emp) return;
     const badge = t.querySelector('.closed-badge');
@@ -903,18 +916,20 @@ function nuevaSemana() {
   const newOld = `${fmt(nextStart.getDate())}/${fmt(nextStart.getMonth()+1)}`;
   const newNew = `${fmt(nextEnd.getDate())}/${fmt(nextEnd.getMonth()+1)}`;
 
-  const updates = {
-    baseline: stockData,
-    'week/old': newOld,
-    'week/new': newNew,
-    counts: { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} },
-    closed: null,
-    stock_final: null
-  };
+  guardarHistorial(`Cierre semana ${weekLabel.old} → ${weekLabel.new}`).then(() => {
+    const updates = {
+      baseline: stockData,
+      'week/old': newOld,
+      'week/new': newNew,
+      counts: { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} },
+      closed: null,
+      stock_final: null
+    };
 
-  db.ref('/').update(updates).then(() => {
-    showToast(`✅ ¡Nueva semana iniciada! ${newOld} → ${newNew}`);
-    document.getElementById('nueva-semana-section').style.display = 'none';
+    db.ref('/').update(updates).then(() => {
+      showToast(`✅ ¡Nueva semana iniciada! ${newOld} → ${newNew}`);
+      document.getElementById('nueva-semana-section').style.display = 'none';
+    });
   });
 }
 
@@ -941,6 +956,7 @@ function renderStockTable() {
     const diffClass = diff === null ? '' : diff > 0 ? 'pos' : diff < 0 ? 'neg' : 'zero';
     const diffText = diff === null ? '—' : (diff > 0 ? '+' + diff : diff === 0 ? '=' : diff);
     row.innerHTML = `
+      <span class="pnum">${i + 1}</span>
       <span class="pname">${name}</span>
       <span class="val">${oldStock}</span>
       <span class="val">${newStock !== null ? newStock : '—'}</span>
@@ -1062,16 +1078,18 @@ function cargarBase() {
       `¿Confirmás?`
     )) return;
 
-    const updates = {
-      custom_products: newProducts,
-      baseline: freshBaseline,
-      counts: { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} },
-      closed: null,
-      stock_final: null
-    };
-    db.ref('/').update(updates).then(() => {
-      document.getElementById('paste-area').value = '';
-      showToast(`✅ Lista de productos reemplazada — ${newProducts.length} productos`);
+    guardarHistorial(`Antes de reemplazar stock base (${weekLabel.old} → ${weekLabel.new})`).then(() => {
+      const updates = {
+        custom_products: newProducts,
+        baseline: freshBaseline,
+        counts: { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} },
+        closed: null,
+        stock_final: null
+      };
+      db.ref('/').update(updates).then(() => {
+        document.getElementById('paste-area').value = '';
+        showToast(`✅ Lista de productos reemplazada — ${newProducts.length} productos`);
+      });
     });
     return;
   }
@@ -1087,6 +1105,70 @@ function cargarBase() {
   db.ref('baseline').set(newBaseline).then(() => {
     document.getElementById('paste-area').value = '';
     showToast(`✅ Base actualizada — ${newBaseline.filter(v => v > 0).length} productos`);
+  });
+}
+
+// ── Historial de respaldos ───────────────────────────────────
+// Guarda una foto completa de productos + stock base + conteos de cada
+// empleado en ese momento, para poder recuperarla si algo se pisa por error.
+function guardarHistorial(label) {
+  const snapshot = {
+    ts: Date.now(),
+    label: label,
+    week: { old: weekLabel.old, new: weekLabel.new },
+    productos: getProductList(),
+    baseline: baseline,
+    counts: counts
+  };
+  return db.ref('historial').push(snapshot).catch(err => {
+    console.error('No se pudo guardar el historial', err);
+  });
+}
+
+let historialCache = {};
+function renderHistorial() {
+  db.ref('historial').orderByChild('ts').once('value', snap => {
+    historialCache = snap.val() || {};
+    const keys = Object.keys(historialCache).sort((a, b) => historialCache[b].ts - historialCache[a].ts);
+    const container = document.getElementById('historial-list');
+    if (!keys.length) {
+      container.innerHTML = '<div class="no-results">Todavía no hay copias guardadas.</div>';
+      return;
+    }
+    container.innerHTML = keys.map(key => {
+      const h = historialCache[key];
+      const fecha = new Date(h.ts).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+      const totalUnidades = Object.values(h.counts || {}).reduce((acc, c) =>
+        acc + Object.values(c || {}).reduce((a, b) => a + (b || 0), 0), 0);
+      return `
+        <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+          <p style="font-size:13px;color:#fff;font-weight:700;">${h.label || 'Copia'}</p>
+          <p style="font-size:12px;color:#888;margin-top:2px;">${fecha} · Semana ${h.week?.old || '?'} → ${h.week?.new || '?'} · ${(h.productos || []).length} productos · ${totalUnidades} unidades contadas</p>
+          <button onclick="restaurarHistorial('${key}')" style="margin-top:8px;padding:8px 14px;background:#1a1a2e;border:2px solid #8b5cf6;color:#8b5cf6;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">🔁 RESTAURAR ESTA COPIA</button>
+        </div>
+      `;
+    }).join('');
+  });
+}
+
+function restaurarHistorial(key) {
+  const h = historialCache[key];
+  if (!h) { showToast('⚠️ No se encontró esa copia'); return; }
+  const fecha = new Date(h.ts).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+  if (!confirm(
+    `¿Restaurar "${h.label}" (${fecha})?\n\n` +
+    `Esto va a reemplazar la lista de productos, el stock base y los conteos actuales por los de ese momento.`
+  )) return;
+
+  const updates = {
+    custom_products: h.productos,
+    baseline: h.baseline,
+    counts: h.counts,
+    'week/old': h.week?.old,
+    'week/new': h.week?.new
+  };
+  db.ref('/').update(updates).then(() => {
+    showToast('✅ Copia restaurada');
   });
 }
 
@@ -1117,7 +1199,7 @@ function verificarPassword() {
 
 function showTab(tab) {
   document.querySelectorAll('.tab').forEach((t,i) => {
-    const tabs = ['base','felipe','juan','fede','azul','nahuel','stock'];
+    const tabs = ['base','felipe','juan','fede','azul','nahuel','stock','historial'];
     t.classList.toggle('active', tabs[i] === tab);
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -1128,9 +1210,10 @@ function showTab(tab) {
     return;
   }
   document.getElementById('panel-' + tab).classList.add('active');
-  document.getElementById('save-btn').style.display = (tab === 'stock' || tab === 'base') ? 'none' : 'block';
+  document.getElementById('save-btn').style.display = (tab === 'stock' || tab === 'base' || tab === 'historial') ? 'none' : 'block';
   if (tab === 'stock') { renderStockTable(); updateCopySection(); }
   if (tab === 'base') buildBaseList();
+  if (tab === 'historial') renderHistorial();
 }
 
 function saveProgress() {
