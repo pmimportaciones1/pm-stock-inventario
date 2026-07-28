@@ -284,7 +284,10 @@
     <div class="card" style="border:1px solid #222"><div class="clabel">NAHUEL</div><div class="cval" id="card-nahuel" style="color:#f43f5e">0</div></div>
   </div>
 
-  <button onclick="copiarParaExcel()" style="width:100%;padding:14px;background:#1d4ed8;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;">📊 COPIAR NÚMEROS SEMANA NUEVA (para Excel)</button>
+  <button onclick="copiarParaExcelPorNombre()" style="width:100%;padding:14px;background:#1d4ed8;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">📋 COPIAR NOMBRE + NÚMERO (recomendado, no se desordena)</button>
+  <p style="font-size:11px;color:#888;margin:0 0 10px;line-height:1.4;">Pegá esta lista en una columna vacía de tu Excel (ej: H e I) y usá <b>BUSCARV</b> por nombre en tu columna de cantidad. Así nunca se desalinea, aunque se agreguen productos nuevos.</p>
+
+  <button onclick="copiarParaExcel()" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:10px;">📊 Copiar solo números (orden posicional, puede desalinearse)</button>
 
   <div id="copy-section" style="display:none" class="copy-section">
     <h3>✅ Todos los conteos cerrados</h3>
@@ -847,6 +850,22 @@ function copiarParaExcel() {
     return '=' + total;
   });
   copiarTexto(lines.join('\n'), '📊 ¡Números copiados! Pegá en Excel con Ctrl+V');
+}
+
+// ── Copiar NOMBRE + NÚMERO (a prueba de desorden) ──────────────
+// A diferencia de copiarParaExcel(), esto no depende de que el orden de
+// productos de la app coincida con el orden de filas de tu planilla.
+// Pegá esta lista en una zona vacía de tu hoja (por ej. columnas H e I)
+// y en tu columna de cantidad usá una fórmula tipo:
+//   =SI.ERROR(BUSCARV($A2, $H:$I, 2, 0), "")
+// así cada producto se busca por NOMBRE, no por posición.
+function copiarParaExcelPorNombre() {
+  const lines = getProductList().map(([name], i) => {
+    let total = 0;
+    EMPLOYEES.forEach(emp => { total += counts[emp]?.[i] || 0; });
+    return `${name}\t${total}`;
+  });
+  copiarTexto(lines.join('\n'), '📋 ¡Copiado! Pegalo en una columna vacía y buscá por nombre (ver instrucciones)');
 }
 
 function copiarTexto(text, msg) {
