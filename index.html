@@ -174,9 +174,9 @@
   </div>
 
   <div style="background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:14px;margin-bottom:12px;">
-    <p style="font-size:13px;color:#aaa;margin-bottom:4px;">• <strong style="color:#fff">Solo números</strong> → actualiza por posición (mismo orden que tu Excel)</p>
-    <p style="font-size:13px;color:#aaa;margin-bottom:12px;">• <strong style="color:#fff">Lista completa con nombres</strong> → pegá todo, matchea por nombre y agrega productos nuevos automáticamente</p>
-    <textarea id="paste-area" placeholder="Solo números:&#10;394&#10;19&#10;11&#10;&#10;Con nombres (para agregar nuevos):&#10;ABRIDORES NASALES	394&#10;ACUARELA 12 COLORES	19&#10;PRODUCTO NUEVO	50" style="width:100%;height:220px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;padding:10px;font-size:14px;font-family:monospace;resize:vertical;line-height:1.6;"></textarea>
+    <p style="font-size:13px;color:#aaa;margin-bottom:4px;">• <strong style="color:#fff">Solo números</strong> → actualiza cantidades por posición, sin tocar la lista de productos</p>
+    <p style="font-size:13px;color:#e94560;margin-bottom:12px;">• <strong style="color:#fff">Lista completa con nombres</strong> → ⚠️ REEMPLAZA TODA la lista de productos por esta (los que no incluyas van a desaparecer) y borra los conteos actuales de todos los empleados</p>
+    <textarea id="paste-area" placeholder="Solo números:&#10;394&#10;19&#10;11&#10;&#10;Con nombres (REEMPLAZA TODO):&#10;ABRIDORES NASALES	394&#10;ACUARELA 12 COLORES	19&#10;PRODUCTO NUEVO	50" style="width:100%;height:220px;background:#111;border:1px solid #333;border-radius:8px;color:#fff;padding:10px;font-size:14px;font-family:monospace;resize:vertical;line-height:1.6;"></textarea>
     <button onclick="cargarBase()" style="width:100%;padding:14px;background:#f59e0b;color:#000;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:10px;">⬆️ CARGAR STOCK BASE</button>
   </div>
 
@@ -1011,9 +1011,13 @@ function updateBaseline(i, input) {
   }, 800);
 }
 
-// Devuelve PRODUCTS + productos extra de Firebase
+// Devuelve PRODUCTS + productos extra de Firebase, salvo que exista una
+// lista de reemplazo total (customProducts) — en ese caso esa lista pasa a
+// ser la única fuente de verdad y se ignoran PRODUCTS y extraProducts.
 let extraProducts = [];
+let customProducts = null;
 function getProductList() {
+  if (customProducts && customProducts.length) return customProducts.map(([n]) => [n]);
   return [...PRODUCTS.map(([n]) => [n]), ...extraProducts.map(([n]) => [n])];
 }
 
@@ -1032,64 +1036,57 @@ function cargarBase() {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const tieneNombres = lines.some(l => l.includes('\t'));
 
-  const newBaseline = new Array(PRODUCTS.length + extraProducts.length).fill(0);
-  const newExtras = [...extraProducts];
-  let nuevos = 0;
-
   if (tieneNombres) {
     // MODO LISTA COMPLETA: NOMBRE\tCANTIDAD
-    // Importante: puede haber productos DISTINTOS con el mismo nombre (o el
-    // mismo nombre con espacios de más). Para no fusionarlos por error,
-    // armamos una "cola" de posiciones por cada nombre normalizado, y cada
-    // vez que aparece ese nombre en lo pegado se va tomando la siguiente
-    // posición de la cola (en el mismo orden en que ya estaban guardadas).
-    // Si el nombre aparece más veces de las que hay guardadas, esas de más
-    // se agregan como productos nuevos (no se pisa ni se fusiona nada).
-    const colasPorNombre = {};
-    PRODUCTS.forEach(([n], i) => {
-      const k = normalizarNombreStock(n);
-      (colasPorNombre[k] = colasPorNombre[k] || []).push(i);
-    });
-    newExtras.forEach(([n], i) => {
-      const k = normalizarNombreStock(n);
-      (colasPorNombre[k] = colasPorNombre[k] || []).push(PRODUCTS.length + i);
-    });
-
+    // A pedido explícito del usuario: esto REEMPLAZA toda la lista de
+    // productos, no la fusiona con la anterior. Así, si cambian nombres de
+    // una semana a otra, no se van acumulando duplicados para siempre — lo
+    // que se pega pasa a ser la única lista de productos de la app.
+    const newProducts = [];
+    const freshBaseline = [];
     lines.forEach(line => {
       if (!line.includes('\t')) return;
       const [rawName, rawQty] = line.split('\t');
       const name = rawName.trim();
-      const qty = parseInt(rawQty) || 0;
-      const nameUp = normalizarNombreStock(name);
-
-      const cola = colasPorNombre[nameUp];
-      if (cola && cola.length) {
-        const idx = cola.shift();
-        newBaseline[idx] = qty;
-        return;
-      }
-
-      // Producto nuevo (o repetido más veces de las que había) → agregar
-      newExtras.push([name]);
-      newBaseline[PRODUCTS.length + newExtras.length - 1] = qty;
-      nuevos++;
+      if (!name) return;
+      newProducts.push([name]);
+      freshBaseline.push(parseInt(rawQty) || 0);
     });
-  } else {
-    // MODO SOLO NÚMEROS: por posición
-    lines.forEach((line, i) => {
-      const qty = parseInt(line);
-      if (!isNaN(qty)) newBaseline[i] = qty;
+
+    if (!newProducts.length) { showToast('⚠️ No se reconoció ningún producto'); return; }
+
+    if (!confirm(
+      `Vas a REEMPLAZAR TODA la lista de productos por esta nueva (${newProducts.length} productos).\n\n` +
+      `• Los productos que no estén en esta lista van a desaparecer.\n` +
+      `• Se van a borrar los conteos actuales de todos los empleados.\n\n` +
+      `¿Confirmás?`
+    )) return;
+
+    const updates = {
+      custom_products: newProducts,
+      baseline: freshBaseline,
+      counts: { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} },
+      closed: null,
+      stock_final: null
+    };
+    db.ref('/').update(updates).then(() => {
+      document.getElementById('paste-area').value = '';
+      showToast(`✅ Lista de productos reemplazada — ${newProducts.length} productos`);
     });
+    return;
   }
 
-  const updates = { baseline: newBaseline, extra_products: newExtras.length ? newExtras : null };
-  db.ref('/').update(updates).then(() => {
+  // MODO SOLO NÚMEROS: actualiza cantidades por posición sobre la lista
+  // actual, sin agregar ni sacar productos.
+  const currentList = getProductList();
+  const newBaseline = new Array(currentList.length).fill(0);
+  lines.forEach((line, i) => {
+    const qty = parseInt(line);
+    if (!isNaN(qty) && i < newBaseline.length) newBaseline[i] = qty;
+  });
+  db.ref('baseline').set(newBaseline).then(() => {
     document.getElementById('paste-area').value = '';
-    const cargados = newBaseline.filter(v => v > 0).length;
-    const msg = nuevos > 0
-      ? `✅ Base cargada — ${cargados} productos (${nuevos} nuevos agregados)`
-      : `✅ Base cargada — ${cargados} productos`;
-    showToast(msg);
+    showToast(`✅ Base actualizada — ${newBaseline.filter(v => v > 0).length} productos`);
   });
 }
 
@@ -1152,19 +1149,28 @@ function showToast(msg) {
 EMPLOYEES.forEach(emp => buildList(emp));
 document.getElementById('save-btn').style.display = 'block';
 
-// Cargar productos extra
+// Cargar productos extra (legado — se ignora si hay custom_products)
 db.ref('extra_products').on('value', snap => {
   extraProducts = snap.val() || [];
-  // Reconstruye la lista de productos de cada empleado (para que los
-  // productos nuevos aparezcan al toque) y vuelve a aplicar lo que ya
-  // tenía cargado y el candado de "cerrado", que si no se pierden
-  // visualmente con la reconstrucción (aunque los datos en Firebase
-  // nunca se borran).
   EMPLOYEES.forEach(emp => {
     buildList(emp);
     refreshList(emp);
     applyClosedState(emp);
   });
+  if (document.getElementById('panel-base').classList.contains('active')) buildBaseList();
+});
+
+// Cargar lista de reemplazo total (cuando el usuario carga stock base con
+// nombres, esto pasa a ser la única fuente de verdad para getProductList())
+db.ref('custom_products').on('value', snap => {
+  customProducts = snap.val() || null;
+  EMPLOYEES.forEach(emp => {
+    buildList(emp);
+    refreshList(emp);
+    applyClosedState(emp);
+  });
+  if (document.getElementById('panel-base').classList.contains('active')) buildBaseList();
+  renderStockTable();
 });
 
 // Cargar baseline (stock base de la semana)
