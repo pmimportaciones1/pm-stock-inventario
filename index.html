@@ -286,16 +286,8 @@
     <div class="card" style="border:1px solid #222"><div class="clabel">NAHUEL</div><div class="cval" id="card-nahuel" style="color:#f43f5e">0</div></div>
   </div>
 
-  <button onclick="copiarParaExcelPorNombre()" style="width:100%;padding:14px;background:#1d4ed8;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">📋 COPIAR NOMBRE + NÚMERO (recomendado, no se desordena)</button>
-  <p style="font-size:11px;color:#888;margin:0 0 10px;line-height:1.4;">Pegá esta lista en una columna vacía de tu Excel (ej: H e I) y usá <b>BUSCARV</b> por nombre en tu columna de cantidad. Así nunca se desalinea, aunque se agreguen productos nuevos.</p>
-
-  <button onclick="copiarParaExcel()" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#ccc;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:10px;">📊 Copiar solo números (orden posicional, puede desalinearse)</button>
-
-  <div id="copy-section" style="display:none" class="copy-section">
-    <h3>✅ Todos los conteos cerrados</h3>
-    <p style="color:#e94560;font-weight:600;">⚠️ Esto NO es para pegar en tu planilla de Excel — para eso usá el botón azul de arriba. Esto es un reporte interno que incluye los nombres de los empleados y el detalle de cuánto contó cada uno:</p>
-    <button class="copy-btn" onclick="copiarInventario()">📄 Reporte interno con detalle por empleado (no usar para Excel)</button>
-  </div>
+  <button onclick="copiarParaExcelPorNombre()" style="width:100%;padding:14px;background:#1d4ed8;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;">📋 COPIAR CONTEOS</button>
+  <p style="font-size:11px;color:#888;margin:0 0 10px;line-height:1.4;">Pegá esta lista en una columna vacía de tu Excel (ej: H e I) y usá <b>BUSCARV</b> por nombre en tu columna de cantidad (una sola vez). Así siempre coincide, aunque se agreguen productos nuevos o cambie el orden.</p>
 
   <div id="pending-section" style="display:none;background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:12px;margin-bottom:14px;">
     <p style="font-size:13px;color:#aaa;margin-bottom:8px;">⏳ Conteos pendientes de cerrar:</p>
@@ -825,7 +817,6 @@ function applyClosedState(emp) {
 function updateCopySection() {
   const allClosed = EMPLOYEES.every(e => closed[e]);
   const pending = EMPLOYEES.filter(e => !closed[e]);
-  document.getElementById('copy-section').style.display = allClosed ? 'block' : 'none';
   document.getElementById('pending-section').style.display = (!allClosed && pending.length < 4) ? 'block' : 'none';
   if (!allClosed && pending.length < 4) {
     document.getElementById('pending-list').innerHTML = pending.map(e =>
