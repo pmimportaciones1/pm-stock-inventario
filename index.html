@@ -293,8 +293,8 @@
 
   <div id="copy-section" style="display:none" class="copy-section">
     <h3>✅ Todos los conteos cerrados</h3>
-    <p>El inventario está listo. Copiá la lista completa con nombres:</p>
-    <button class="copy-btn" onclick="copiarInventario()">📋 COPIAR COMPLETO (con nombres)</button>
+    <p style="color:#e94560;font-weight:600;">⚠️ Esto NO es para pegar en tu planilla de Excel — para eso usá el botón azul de arriba. Esto es un reporte interno que incluye los nombres de los empleados y el detalle de cuánto contó cada uno:</p>
+    <button class="copy-btn" onclick="copiarInventario()">📄 Reporte interno con detalle por empleado (no usar para Excel)</button>
   </div>
 
   <div id="pending-section" style="display:none;background:#1a1a1a;border:1px solid #333;border-radius:10px;padding:12px;margin-bottom:14px;">
@@ -834,8 +834,9 @@ function updateCopySection() {
   }
 }
 
-// ── Copiar inventario completo ────────────────────────────────
+// ── Copiar inventario completo (reporte interno, NO para Excel) ─
 function copiarInventario() {
+  if (!confirm('Este reporte incluye los nombres de los empleados y el detalle de cada uno.\n\nNO sirve para pegar en tu planilla de Excel (para eso usá el botón azul "COPIAR NOMBRE + NÚMERO").\n\n¿Copiar igual este reporte interno?')) return;
   const lines = [`INVENTARIO ${weekLabel.new}`, '='.repeat(40)];
   getProductList().forEach(([name], i) => {
     let total = 0;
