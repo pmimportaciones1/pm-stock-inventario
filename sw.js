@@ -8,18 +8,25 @@
 //
 // Subí este archivo (sw.js) a la RAÍZ del repositorio, al lado de index.html.
 
-const CACHE_NAME = 'pmstock-shell-v1';
+const CACHE_NAME = 'pmstock-shell-v2';
 const APP_SHELL = [
   './',
-  './index.html'
+  './index.html',
+  'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js'
 ];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(APP_SHELL))
-      .catch(() => {}) // si falla el precache inicial, no rompe la instalación
+    caches.open(CACHE_NAME).then(cache => {
+      // Se cachea cada archivo por separado (no con addAll) para que si uno
+      // falla (ej. por CORS) no arruine la instalación de los demás — sobre
+      // todo el index.html, que es el que más importa tener guardado.
+      return Promise.all(APP_SHELL.map(url =>
+        cache.add(url).catch(err => console.warn('No se pudo precachear', url, err))
+      ));
+    })
   );
 });
 
