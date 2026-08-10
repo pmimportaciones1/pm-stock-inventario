@@ -12,6 +12,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+  // Registra el service worker para que la app abra aunque no haya internet.
+  // Se registra apenas arranca a cargar la página (no espera a "load") para
+  // que quede activo lo antes posible.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function(err) {
+      console.warn('No se pudo registrar el service worker (modo offline no disponible):', err);
+    });
+  }
+</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Lexend', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #fff; -webkit-font-smoothing: antialiased; letter-spacing: 0.1px; }
@@ -137,7 +147,10 @@
 
 <div class="header">
   <h1>📦 PM Stock</h1>
-  <span class="week" id="header-week">Semana 29/06 → 06/07</span>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+    <span class="week" id="header-week">Semana 29/06 → 06/07</span>
+    <span id="sync-badge" style="font-size:11px;font-weight:600;">🟢 Conectado</span>
+  </div>
 </div>
 
 <div class="tabs">
@@ -700,6 +713,69 @@ let currentStockFilter = 'all';
 let currentStockSearch = '';
 let saveTimer = {};
 
+// ── Modo sin conexión ─────────────────────────────────────────
+// Guarda una copia de todo lo importante en el celular (localStorage) para
+// que la app abra y se pueda seguir contando aunque no haya internet. Los
+// cambios se mandan a Firebase apenas vuelve la conexión.
+const LS_PREFIX = 'pmstock_';
+function lsSet(key, val) {
+  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(val)); } catch (e) {}
+}
+function lsGet(key, fallback) {
+  try {
+    const v = localStorage.getItem(LS_PREFIX + key);
+    return v === null ? fallback : JSON.parse(v);
+  } catch (e) { return fallback; }
+}
+
+let pendingSync = {};   // pendingSync[emp] === true → hay conteos de ese empleado sin confirmar en Firebase
+let dbConnected = null; // null = todavía no sabemos, true/false = estado real de conexión con Firebase
+EMPLOYEES.forEach(emp => { pendingSync[emp] = lsGet('pending_' + emp, false); });
+
+function updateSyncBadge() {
+  const el = document.getElementById('sync-badge');
+  if (!el) return;
+  const anyPending = EMPLOYEES.some(emp => pendingSync[emp]);
+  if (dbConnected === false) {
+    el.textContent = anyPending ? '🔴 Sin conexión — guardado en el celular' : '🔴 Sin conexión';
+    el.style.color = '#e94560';
+  } else if (anyPending) {
+    el.textContent = '🟡 Sincronizando...';
+    el.style.color = '#f59e0b';
+  } else if (dbConnected === true) {
+    el.textContent = '🟢 Todo sincronizado';
+    el.style.color = '#10b981';
+  } else {
+    el.textContent = '🟡 Conectando...';
+    el.style.color = '#f59e0b';
+  }
+}
+
+// Manda a Firebase el conteo local de un empleado. Se puede llamar las
+// veces que haga falta (reintentos) sin riesgo, porque siempre manda el
+// estado completo actual, no manda "de más" ni duplica nada.
+function flushEmployee(emp) {
+  db.ref(`counts/${emp}`).set(counts[emp] || {})
+    .then(() => {
+      pendingSync[emp] = false;
+      lsSet('pending_' + emp, false);
+      updateSyncBadge();
+    })
+    .catch(() => {
+      // Sigue sin conexión: queda pendiente, se reintenta solo más adelante.
+      updateSyncBadge();
+    });
+}
+
+function flushAllPending() {
+  EMPLOYEES.forEach(emp => { if (pendingSync[emp]) flushEmployee(emp); });
+}
+
+// Reintenta mandar lo pendiente apenas vuelve la conexión, y también cada
+// pocos segundos como red de seguridad.
+window.addEventListener('online', flushAllPending);
+setInterval(flushAllPending, 8000);
+
 // ── Construcción de listas ───────────────────────────────────
 function buildList(emp) {
   const container = document.getElementById('list-' + emp);
@@ -748,11 +824,18 @@ function updateCount(emp, idx, input) {
   }
   updateTotals(emp);
   updateSummaryCards();
-  // Debounce: espera 800ms de inactividad antes de guardar en Firebase
+
+  // Guarda YA en el celular (localStorage), sin depender de tener internet.
+  // Esto es lo que permite seguir contando sin conexión sin perder nada.
+  lsSet('counts_' + emp, counts[emp]);
+  pendingSync[emp] = true;
+  lsSet('pending_' + emp, true);
+  updateSyncBadge();
+
+  // Debounce: espera 800ms de inactividad antes de intentar mandarlo a
+  // Firebase. Si no hay conexión, queda guardado local y se reintenta solo.
   clearTimeout(saveTimer[emp]);
-  saveTimer[emp] = setTimeout(() => {
-    db.ref(`counts/${emp}`).set(counts[emp]);
-  }, 800);
+  saveTimer[emp] = setTimeout(() => flushEmployee(emp), 800);
 }
 
 function updateTotals(emp) {
@@ -1209,8 +1292,9 @@ function showTab(tab) {
 }
 
 function saveProgress() {
-  EMPLOYEES.forEach(emp => db.ref(`counts/${emp}`).set(counts[emp]));
-  showToast('✅ Guardado en Firebase');
+  EMPLOYEES.forEach(emp => { pendingSync[emp] = true; lsSet('pending_' + emp, true); flushEmployee(emp); });
+  updateSyncBadge();
+  showToast(dbConnected === false ? '💾 Guardado en el celular (sin conexión)' : '✅ Guardado en Firebase');
 }
 
 function showToast(msg) {
@@ -1220,13 +1304,31 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-// ── Init con listeners en tiempo real ────────────────────────
+// ── Init: primero lo que haya guardado en el celular (offline-safe) ──
+// Esto hace que la app muestre algo útil de entrada, incluso sin internet,
+// en vez de una pantalla vacía esperando a Firebase.
+extraProducts = lsGet('extraProducts', []);
+customProducts = lsGet('customProducts', null);
+baseline = lsGet('baseline', PRODUCTS.map(p => p[1]));
+weekLabel = lsGet('weekLabel', weekLabel);
+closed = lsGet('closed', {});
+stockData = lsGet('stockData', null);
+EMPLOYEES.forEach(emp => { counts[emp] = lsGet('counts_' + emp, {}); });
+
 EMPLOYEES.forEach(emp => buildList(emp));
+EMPLOYEES.forEach(emp => { refreshList(emp); applyClosedState(emp); });
 document.getElementById('save-btn').style.display = 'block';
+const headerWeekInit = document.getElementById('header-week');
+if (headerWeekInit) headerWeekInit.textContent = `Semana ${weekLabel.old} → ${weekLabel.new}`;
+renderStockTable();
+updateSyncBadge();
+
+// ── Init con listeners en tiempo real (actualizan cache + UI cuando hay conexión) ──
 
 // Cargar productos extra (legado — se ignora si hay custom_products)
 db.ref('extra_products').on('value', snap => {
   extraProducts = snap.val() || [];
+  lsSet('extraProducts', extraProducts);
   EMPLOYEES.forEach(emp => {
     buildList(emp);
     refreshList(emp);
@@ -1239,6 +1341,7 @@ db.ref('extra_products').on('value', snap => {
 // nombres, esto pasa a ser la única fuente de verdad para getProductList())
 db.ref('custom_products').on('value', snap => {
   customProducts = snap.val() || null;
+  lsSet('customProducts', customProducts);
   EMPLOYEES.forEach(emp => {
     buildList(emp);
     refreshList(emp);
@@ -1250,7 +1353,7 @@ db.ref('custom_products').on('value', snap => {
 
 // Cargar baseline (stock base de la semana)
 db.ref('baseline').on('value', snap => {
-  if (snap.val()) baseline = snap.val();
+  if (snap.val()) { baseline = snap.val(); lsSet('baseline', baseline); }
   renderStockTable();
   if (document.getElementById('panel-base').classList.contains('active')) buildBaseList();
 });
@@ -1258,16 +1361,20 @@ db.ref('baseline').on('value', snap => {
 // Cargar etiquetas de semana
 db.ref('week').on('value', snap => {
   const w = snap.val();
-  if (w) weekLabel = { old: w.old, new: w.new };
+  if (w) { weekLabel = { old: w.old, new: w.new }; lsSet('weekLabel', weekLabel); }
   const headerWeek = document.getElementById('header-week');
   if (headerWeek) headerWeek.textContent = `Semana ${weekLabel.old} → ${weekLabel.new}`;
   renderStockTable();
 });
 
-// Escuchar conteos en tiempo real
+// Escuchar conteos en tiempo real. Si ese empleado tiene cambios locales
+// todavía sin confirmar (pendingSync), NO se pisan con lo que llega del
+// servidor — se espera a que se termine de mandar lo local primero.
 EMPLOYEES.forEach(emp => {
   db.ref(`counts/${emp}`).on('value', snap => {
+    if (pendingSync[emp]) return;
     counts[emp] = snap.val() || {};
+    lsSet('counts_' + emp, counts[emp]);
     refreshList(emp);
     updateSummaryCards();
   });
@@ -1276,6 +1383,7 @@ EMPLOYEES.forEach(emp => {
 // Escuchar cierres en tiempo real
 db.ref('closed').on('value', snap => {
   closed = snap.val() || {};
+  lsSet('closed', closed);
   EMPLOYEES.forEach(emp => applyClosedState(emp));
   updateCopySection();
 });
@@ -1283,8 +1391,17 @@ db.ref('closed').on('value', snap => {
 // Escuchar stock final en tiempo real
 db.ref('stock_final').on('value', snap => {
   stockData = snap.val() || null;
+  lsSet('stockData', stockData);
   if (stockData) document.getElementById('nueva-semana-section').style.display = 'block';
   renderStockTable();
+});
+
+// Estado real de conexión con Firebase (más confiable que navigator.onLine).
+// Cuando vuelve la conexión, intenta mandar todo lo que quedó pendiente.
+db.ref('.info/connected').on('value', snap => {
+  dbConnected = snap.val() === true;
+  if (dbConnected) flushAllPending();
+  updateSyncBadge();
 });
 </script>
 </body>
