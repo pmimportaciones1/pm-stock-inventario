@@ -1165,7 +1165,13 @@ function cargarBase() {
   const text = document.getElementById('paste-area').value.trim();
   if (!text) { showToast('⚠️ Pegá datos primero'); return; }
 
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  // OJO: no usar .trim() sobre la línea completa acá. Si la cantidad viene
+  // vacía (celda vacía en Excel), la línea termina en un tab sin nada
+  // después ("NOMBRE\t"), y trim() se come ese tab final por ser un
+  // espacio en blanco — eso hacía que la fila se descartara entera más
+  // abajo (bug real: así se perdieron 3 productos con cantidad vacía).
+  // Solo sacamos el \r de Windows y filtramos líneas realmente vacías.
+  const lines = text.split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim() !== '');
   const tieneNombres = lines.some(l => l.includes('\t'));
 
   if (tieneNombres) {
