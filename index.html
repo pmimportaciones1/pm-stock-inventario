@@ -67,6 +67,12 @@
   .product-input::-webkit-outer-spin-button, .product-input::-webkit-inner-spin-button { -webkit-appearance: none; }
   .product-input:focus { outline: none; border-color: #e94560; background: #1a1a1a; }
   .product-input.filled { border-color: #10b981; background: #0d1f1a; color: #10b981; }
+  .product-input.match-ok { border-color: #10b981; background: #0d1f1a; color: #10b981; }
+  .product-input.match-under { border-color: #e94560; background: #2a0d14; color: #e94560; }
+  .product-input.match-over { border-color: #f59e0b; background: #2a2008; color: #f59e0b; }
+  .pnum-badge { color: #555; font-size: 11px; flex-shrink: 0; min-width: 32px; text-align: right; }
+  .stock-final-input { width: 100%; padding: 4px 6px; border-radius: 6px; border: 1px solid #333; background: #111; color: #fff; font-size: 12px; font-weight: 600; text-align: center; }
+  .stock-final-input:focus { outline: none; border-color: #e94560; background: #1a1a1a; }
 
   .save-btn { position: fixed; bottom: 20px; right: 20px; background: #e94560; color: #fff; border: none; border-radius: 50px; padding: 14px 24px; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 20px rgba(233,69,96,0.5); z-index: 200; transition: transform 0.1s; }
   .save-btn:active { transform: scale(0.96); }
@@ -786,6 +792,7 @@ function buildList(emp) {
     row.dataset.name = name.toLowerCase();
     row.dataset.idx = i;
     row.innerHTML = `
+      <span class="pnum-badge">#${i + 1}</span>
       <span class="product-name">${name}</span>
       <input class="product-input" id="inp-${emp}-${i}"
         type="number" min="0" placeholder="0"
@@ -802,7 +809,11 @@ function refreshList(emp) {
     if (!input) return;
     const val = counts[emp]?.[i];
     input.value = val || '';
-    input.classList.toggle('filled', !!val);
+    input.classList.remove('filled', 'match-ok', 'match-under', 'match-over');
+    if (val) {
+      const base = baseline[i] ?? 0;
+      input.classList.add(val === base ? 'match-ok' : val < base ? 'match-under' : 'match-over');
+    }
     input.closest('.product-row').classList.toggle('has-value', !!val);
   });
   updateTotals(emp);
@@ -813,13 +824,15 @@ function updateCount(emp, idx, input) {
   if (closed[emp]) { input.value = counts[emp]?.[idx] || ''; return; }
   const val = input.value === '' ? 0 : parseInt(input.value) || 0;
   if (!counts[emp]) counts[emp] = {};
+  input.classList.remove('filled', 'match-ok', 'match-under', 'match-over');
   if (val === 0) {
     delete counts[emp][idx];
-    input.classList.remove('filled');
     input.closest('.product-row').classList.remove('has-value');
   } else {
     counts[emp][idx] = val;
-    input.classList.add('filled');
+    // Verde = coincide con el stock base, Rojo = falta, Amarillo = sobra
+    const base = baseline[idx] ?? 0;
+    input.classList.add(val === base ? 'match-ok' : val < base ? 'match-under' : 'match-over');
     input.closest('.product-row').classList.add('has-value');
   }
   updateTotals(emp);
@@ -1030,18 +1043,46 @@ function renderStockTable() {
     row.className = 'stock-row' + (diff !== 0 && diff !== null ? ' changed' : '');
     const diffClass = diff === null ? '' : diff > 0 ? 'pos' : diff < 0 ? 'neg' : 'zero';
     const diffText = diff === null ? '—' : (diff > 0 ? '+' + diff : diff === 0 ? '=' : diff);
+    // Si ya se cargó el inventario, la cantidad contada se puede corregir a
+    // mano acá mismo (para arreglar diferencias sin volver a contar todo).
+    const newStockCell = stockData
+      ? `<input type="number" min="0" class="stock-final-input" value="${newStock}" onchange="updateStockFinal(${i}, this)" oninput="updateStockFinal(${i}, this)">`
+      : `<span class="val">—</span>`;
     row.innerHTML = `
       <span class="pnum">${i + 1}</span>
       <span class="pname">${name}</span>
       <span class="val">${oldStock}</span>
-      <span class="val">${newStock !== null ? newStock : '—'}</span>
-      <span class="val diff ${diffClass}">${diffText}</span>
+      ${newStockCell}
+      <span class="val diff ${diffClass}" id="diff-${i}">${diffText}</span>
     `;
     container.appendChild(row);
   });
   if (container.children.length === 0)
     container.innerHTML = '<div class="no-results">Sin resultados</div>';
   updateSummaryCards();
+}
+
+// Permite corregir a mano la cantidad contada de un producto puntual en
+// STOCK ACTUAL, sin tener que recontar todo. Guarda en stock_final con
+// debounce, y actualiza la diferencia en pantalla al instante.
+let stockFinalSaveTimer = null;
+function updateStockFinal(i, input) {
+  if (!stockData) return;
+  const val = input.value === '' ? 0 : parseInt(input.value) || 0;
+  stockData[i] = val;
+
+  const oldStock = baseline[i] ?? 0;
+  const diff = val - oldStock;
+  const diffEl = document.getElementById('diff-' + i);
+  if (diffEl) {
+    diffEl.textContent = diff > 0 ? '+' + diff : diff === 0 ? '=' : diff;
+    diffEl.className = 'val diff ' + (diff > 0 ? 'pos' : diff < 0 ? 'neg' : 'zero');
+  }
+
+  clearTimeout(stockFinalSaveTimer);
+  stockFinalSaveTimer = setTimeout(() => {
+    db.ref('stock_final').set(stockData).then(() => showToast('✅ Cantidad corregida'));
+  }, 800);
 }
 
 function guardarFechas() {
@@ -1080,7 +1121,7 @@ function buildBaseList() {
     row.style.cssText = 'display:grid;grid-template-columns:1fr 80px;padding:8px 12px;border-top:1px solid #1a1a1a;align-items:center;font-size:13px;';
     row.style.background = i % 2 === 0 ? '#111' : 'transparent';
     row.innerHTML = `
-      <span style="color:#ccc;line-height:1.3">${name}</span>
+      <span style="color:#ccc;line-height:1.3"><span style="color:#555;font-size:11px;">#${i + 1}</span> ${name}</span>
       <input class="product-input" id="base-inp-${i}" type="number" min="0" placeholder="0"
         value="${val || ''}"
         style="width:72px;padding:6px 8px;border-radius:6px;border:1px solid #333;background:#111;color:${val > 0 ? '#10b981' : '#fff'};font-size:14px;font-weight:600;text-align:center;"
