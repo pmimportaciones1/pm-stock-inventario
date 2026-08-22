@@ -737,6 +737,9 @@ function lsGet(key, fallback) {
 let pendingSync = {};   // pendingSync[emp] === true → hay conteos de ese empleado sin confirmar en Firebase
 let dbConnected = null; // null = todavía no sabemos, true/false = estado real de conexión con Firebase
 EMPLOYEES.forEach(emp => { pendingSync[emp] = lsGet('pending_' + emp, false); });
+  // dirtyIdx[emp] = Set con los indices de producto que ese empleado edito localmente y aun no se confirmaron en Firebase (evita perder conteos si llega una actualizacion del servidor mientras hay un envio en camino).
+  let dirtyIdx = {};
+  EMPLOYEES.forEach(emp => { dirtyIdx[emp] = new Set(); });
 
 function updateSyncBadge() {
   const el = document.getElementById('sync-badge');
@@ -761,10 +764,12 @@ function updateSyncBadge() {
 // veces que haga falta (reintentos) sin riesgo, porque siempre manda el
 // estado completo actual, no manda "de más" ni duplica nada.
 function flushEmployee(emp) {
+  const idxEnEsteEnvio = new Set(dirtyIdx[emp]);
   db.ref(`counts/${emp}`).set(counts[emp] || {})
     .then(() => {
-      pendingSync[emp] = false;
-      lsSet('pending_' + emp, false);
+      idxEnEsteEnvio.forEach(i => dirtyIdx[emp].delete(i));
+            pendingSync[emp] = dirtyIdx[emp].size > 0;
+      lsSet('pending_' + emp, pendingSync[emp]);
       updateSyncBadge();
     })
     .catch(() => {
@@ -841,6 +846,8 @@ function updateCount(emp, idx, input) {
   // Guarda YA en el celular (localStorage), sin depender de tener internet.
   // Esto es lo que permite seguir contando sin conexión sin perder nada.
   lsSet('counts_' + emp, counts[emp]);
+  if (!dirtyIdx[emp]) dirtyIdx[emp] = new Set();
+  dirtyIdx[emp].add(idx);
   pendingSync[emp] = true;
   lsSet('pending_' + emp, true);
   updateSyncBadge();
@@ -1018,7 +1025,7 @@ function nuevaSemana() {
       showToast(`✅ ¡Nueva semana iniciada! ${newOld} → ${newNew}`);
       document.getElementById('nueva-semana-section').style.display = 'none';
     });
-  });
+}).catch(() => { alert('No se pudo guardar la copia de seguridad. Revisa tu conexion. Por seguridad, NO se inicio la nueva semana ni se borraron conteos. Proba de nuevo.'); });
 }
 
 // ── Tabla de stock ────────────────────────────────────────────
@@ -1192,6 +1199,21 @@ function cargarBase() {
     });
 
     if (!newProducts.length) { showToast('⚠️ No se reconoció ningún producto'); return; }
+    const oldList = getProductList();
+  const newIndexByName = {};
+  newProducts.forEach(([name], i) => { newIndexByName[name] = i; });
+  const remappedCounts = {};
+  EMPLOYEES.forEach(emp => {
+   remappedCounts[emp] = {};
+  const empCounts = counts[emp] || {};
+  Object.keys(empCounts).forEach(oldIdxKey => {
+  const oldEntry = oldList[oldIdxKey];
+  const name = oldEntry ? oldEntry[0] : null;
+  if (name !== null && Object.prototype.hasOwnProperty.call(newIndexByName, name)) {
+  remappedCounts[emp][newIndexByName[name]] = empCounts[oldIdxKey];
+  }
+  });
+  });
 
     if (!confirm(
       `Vas a REEMPLAZAR TODA la lista de productos por esta nueva (${newProducts.length} productos).\n\n` +
@@ -1204,7 +1226,7 @@ function cargarBase() {
       const updates = {
         custom_products: newProducts,
         baseline: freshBaseline,
-        counts: { felipe:{}, juan:{}, fede:{}, azul:{}, nahuel:{} },
+        counts: remappedCounts,
         closed: null,
         stock_final: null
       };
@@ -1212,7 +1234,7 @@ function cargarBase() {
         document.getElementById('paste-area').value = '';
         showToast(`✅ Lista de productos reemplazada — ${newProducts.length} productos`);
       });
-    });
+    }).catch(() => { alert('No se pudo guardar la copia de seguridad. Revisa tu conexion. Por seguridad, NO se reemplazo la lista ni se borraron conteos. Proba de nuevo.'); });
     return;
   }
 
@@ -1244,6 +1266,7 @@ function guardarHistorial(label) {
   };
   return db.ref('historial').push(snapshot).catch(err => {
     console.error('No se pudo guardar el historial', err);
+    throw err;
   });
 }
 
@@ -1419,8 +1442,19 @@ db.ref('week').on('value', snap => {
 // servidor — se espera a que se termine de mandar lo local primero.
 EMPLOYEES.forEach(emp => {
   db.ref(`counts/${emp}`).on('value', snap => {
-    if (pendingSync[emp]) return;
-    counts[emp] = snap.val() || {};
+    const serverVal = snap.val() || {};
+  const dirty = dirtyIdx[emp];
+  if (dirty && dirty.size > 0) {
+  const merged = {};
+  Object.keys(serverVal).forEach(k => { merged[k] = serverVal[k]; });
+  dirty.forEach(i => {
+  if (counts[emp] && counts[emp][i] !== undefined) merged[i] = counts[emp][i];
+  else delete merged[i];
+  });
+  counts[emp] = merged;
+  } else {
+  counts[emp] = serverVal;
+  }
     lsSet('counts_' + emp, counts[emp]);
     refreshList(emp);
     updateSummaryCards();
